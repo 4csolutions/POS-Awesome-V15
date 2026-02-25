@@ -27,8 +27,8 @@ function resolveOrderDeliveryDate(context: any, sourceDoc: any): string | null {
 	return normalizeBackendDate(
 		context,
 		sourceDoc?.posa_delivery_date ||
-			sourceDoc?.delivery_date ||
-			context.new_delivery_date,
+		sourceDoc?.delivery_date ||
+		context.new_delivery_date,
 	);
 }
 
@@ -403,9 +403,9 @@ export function get_invoice_items(context: any) {
 		const itemDeliveryDate = normalizeBackendDate(
 			context,
 			item.posa_delivery_date ||
-				(requiresDeliveryDate
-					? item.delivery_date || parentDeliveryDate
-					: item.delivery_date),
+			(requiresDeliveryDate
+				? item.delivery_date || parentDeliveryDate
+				: item.delivery_date),
 		);
 		const new_item = {
 			item_code: item.item_code,
@@ -438,7 +438,11 @@ export function get_invoice_items(context: any) {
 			discount_percentage: flt(item.discount_percentage),
 			batch_no: item.batch_no,
 			posa_notes: item.posa_notes,
-			posa_delivery_date: itemDeliveryDate,
+			posa_delivery_date: context.formatDateForBackend
+				? context.formatDateForBackend(item.posa_delivery_date)
+				: item.posa_delivery_date,
+			reference_dt: item.reference_dt,
+			reference_dn: item.reference_dn,
 		};
 
 		if (requiresDeliveryDate && itemDeliveryDate) {
@@ -529,6 +533,8 @@ export function get_order_items(context: any) {
 			posa_notes: item.posa_notes,
 			posa_delivery_date: item.posa_delivery_date,
 			price_list_rate: item.price_list_rate,
+			reference_dt: item.reference_dt,
+			reference_dn: item.reference_dn,
 		};
 		items_list.push(new_item);
 	});
@@ -574,9 +580,9 @@ export function get_payments(context: any) {
 					index === sourcePayments.length - 1
 						? remaining_amount
 						: context.flt(
-								total_amount * share,
-								context.currency_precision,
-							);
+							total_amount * share,
+							context.currency_precision,
+						);
 				payment_amount = -Math.abs(payment_amount);
 				remaining_amount = context.flt(
 					remaining_amount - Math.abs(payment_amount),
@@ -612,8 +618,8 @@ export function get_payments(context: any) {
 				type: payment.type,
 				default:
 					payment.default === 1 ||
-					payment.default === true ||
-					index === 0
+						payment.default === true ||
+						index === 0
 						? 1
 						: 0,
 				base_amount: 0,
@@ -636,8 +642,8 @@ export function get_payments(context: any) {
 				type: payment.type,
 				default:
 					payment.default === 1 ||
-					payment.default === true ||
-					index === 0
+						payment.default === true ||
+						index === 0
 						? 1
 						: 0,
 				base_amount: 0,
