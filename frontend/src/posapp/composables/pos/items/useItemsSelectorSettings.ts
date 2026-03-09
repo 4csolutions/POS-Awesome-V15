@@ -21,6 +21,7 @@ export const useItemsSelectorSettings = ({
 	const toggleItemSettings = () => {
 		const vm = getVm();
 		if (!vm) return;
+		vm.temp_new_line = vm.new_line;
 		vm.temp_hide_qty_decimals = vm.hide_qty_decimals;
 		vm.temp_hide_zero_rate_items = vm.hide_zero_rate_items;
 		vm.temp_enable_custom_items_per_page = vm.enable_custom_items_per_page;
@@ -44,6 +45,7 @@ export const useItemsSelectorSettings = ({
 		const vm = getVm();
 		if (!vm || !vm.localStorageAvailable) return;
 		const settings = {
+			new_line: vm.new_line,
 			hide_qty_decimals: vm.hide_qty_decimals,
 			hide_zero_rate_items: vm.hide_zero_rate_items,
 			show_last_invoice_rate: vm.show_last_invoice_rate,
@@ -78,6 +80,7 @@ export const useItemsSelectorSettings = ({
 				? resolved[key]
 				: fallback;
 
+		vm.new_line = getValue("new_line", vm.temp_new_line);
 		vm.hide_qty_decimals = getValue(
 			"hide_qty_decimals",
 			vm.temp_hide_qty_decimals,
@@ -138,6 +141,9 @@ export const useItemsSelectorSettings = ({
 		const opts = loadItemSelectorSettings();
 		if (!opts) {
 			return;
+		}
+		if (typeof opts.new_line === "boolean") {
+			vm.new_line = opts.new_line;
 		}
 		if (typeof opts.hide_qty_decimals === "boolean") {
 			vm.hide_qty_decimals = opts.hide_qty_decimals;

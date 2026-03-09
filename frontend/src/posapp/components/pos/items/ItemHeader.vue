@@ -1,19 +1,6 @@
 <template>
 	<div class="sticky-header">
 		<v-row class="items">
-			<v-col cols="12" class="pb-0" v-if="posProfile.posa_new_line">
-				<div class="header-toggle-row">
-					<v-checkbox
-						:model-value="newLine"
-						@update:model-value="$emit('update:newLine', !!$event)"
-						color="accent"
-						:label="__('Add on New Line')"
-						density="compact"
-						hide-details
-						class="new-line-checkbox"
-					></v-checkbox>
-				</div>
-			</v-col>
 			<v-col
 				class="pb-0"
 				cols="12"
@@ -140,7 +127,6 @@ import { ref } from "vue";
 defineProps({
 	searchInput: { type: String, default: "" },
 	qtyInput: { type: [String, Number], default: 1 },
-	newLine: { type: [Boolean, Array], default: false },
 	posProfile: { type: Object, required: true },
 	scannerLocked: { type: Boolean, default: false },
 	enableBackgroundSync: { type: Boolean, default: false },
@@ -152,7 +138,6 @@ defineProps({
 defineEmits([
 	"update:searchInput",
 	"update:qtyInput",
-	"update:newLine",
 	"esc",
 	"enter",
 	"search-keydown",
@@ -188,19 +173,6 @@ defineExpose({
 
 .items {
 	margin: 0;
-}
-
-.header-toggle-row {
-	display: flex;
-	justify-content: flex-end;
-}
-
-.new-line-checkbox {
-	margin: 0 0 6px 0;
-}
-
-:deep(.new-line-checkbox .v-selection-control) {
-	min-height: 32px;
 }
 
 .settings-container {

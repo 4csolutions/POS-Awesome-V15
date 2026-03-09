@@ -16,6 +16,15 @@
 			<v-divider></v-divider>
 			<v-card-text class="pa-4">
 				<v-switch
+					v-if="props.allowNewLineSetting"
+					v-model="form.new_line"
+					:label="__('Add on New Line')"
+					hide-details
+					density="compact"
+					color="primary"
+					class="mb-2"
+				></v-switch>
+				<v-switch
 					v-model="form.hide_qty_decimals"
 					:label="__('Hide quantity decimals')"
 					hide-details
@@ -108,6 +117,7 @@ import { computed, reactive, watch } from "vue";
 const props = defineProps({
 	modelValue: { type: Boolean, default: false },
 	initialSettings: { type: Object, required: true },
+	allowNewLineSetting: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["update:modelValue", "save"]);
@@ -118,6 +128,7 @@ const dialogModel = computed({
 });
 
 const form = reactive({
+	new_line: false,
 	hide_qty_decimals: false,
 	hide_zero_rate_items: false,
 	show_last_invoice_rate: true,

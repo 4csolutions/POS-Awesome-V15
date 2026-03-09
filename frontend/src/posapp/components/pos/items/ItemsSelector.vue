@@ -37,14 +37,12 @@
 					<ItemHeader
 						v-model:search-input="search_input"
 						v-model:qty-input="debounce_qty"
-						:new-line="new_line"
 						:pos-profile="pos_profile"
 						:scanner-locked="scannerLocked"
 						:enable-background-sync="enable_background_sync"
 						:last-sync-time="lastSyncTimeLabel"
 						:sync-status="syncStatus"
 						:context="context"
-						@update:newLine="new_line = $event"
 						@esc="esc_event"
 						@enter="onEnter"
 						@search-keydown="handleSearchKeydown"
@@ -65,7 +63,9 @@
 
 				<ItemSettingsDialog
 					v-model="show_item_settings"
+					:allow-new-line-setting="!!pos_profile?.posa_new_line"
 					:initial-settings="{
+						new_line,
 						hide_qty_decimals,
 						hide_zero_rate_items,
 						show_last_invoice_rate,
@@ -271,7 +271,11 @@ const itemsIntegration = useItemsIntegration({
 	debounceDelay: 300,
 });
 
-const { showOnlyBarcodeItems: showOnlyBarcodeItemsRef, filterAndPaginate } = useItemSearch();
+const {
+	showOnlyBarcodeItems: showOnlyBarcodeItemsRef,
+	filterAndPaginate,
+	fetchServerItemsTimestamp,
+} = useItemSearch();
 
 const scannerInput = useScannerInput();
 const itemAvailability = useItemAvailability();
@@ -330,6 +334,7 @@ const items_per_page = ref(50);
 
 // Temporary Settings Refs (for dialog)
 const show_item_settings = ref(false);
+const temp_new_line = ref(false);
 const temp_hide_qty_decimals = ref(false);
 const temp_hide_zero_rate_items = ref(false);
 const temp_enable_custom_items_per_page = ref(false);
@@ -377,6 +382,9 @@ const blockSaleBeyondAvailableQty = computed(() => {
 
 const deferStockValidationToPayment = computed(() =>
 	["Order", "Quotation"].includes(current_invoice_type.value),
+);
+const forceCustomerPriceList = computed(() =>
+	parseBooleanSetting(pos_profile.value?.posa_force_price_from_customer_price_list),
 );
 
 const { items, filteredItems, customer_price_list, loading, isBackgroundLoading } = itemsIntegration;
@@ -448,6 +456,7 @@ const lastSyncTimeLabel = computed(() => {
 
 // Settings context object for useItemsSelectorSettings
 const settingsContext = reactive({
+	new_line,
 	hide_qty_decimals,
 	hide_zero_rate_items,
 	show_last_invoice_rate,
@@ -455,6 +464,7 @@ const settingsContext = reactive({
 	background_sync_interval,
 	enable_custom_items_per_page,
 	items_per_page,
+	temp_new_line,
 	temp_hide_qty_decimals,
 	temp_hide_zero_rate_items,
 	temp_enable_custom_items_per_page,
@@ -677,6 +687,7 @@ const syncSelectorPriceList = async (incomingPriceList: unknown) => {
 };
 
 const toggleItemSettings = () => {
+	temp_new_line.value = new_line.value;
 	temp_hide_qty_decimals.value = hide_qty_decimals.value;
 	temp_hide_zero_rate_items.value = hide_zero_rate_items.value;
 	temp_enable_custom_items_per_page.value = enable_custom_items_per_page.value;
@@ -810,9 +821,40 @@ onMounted(async () => {
 		get background_sync_interval() {
 			return background_sync_interval.value;
 		},
-		refreshModifiedItems: () => itemsIntegration.refreshModifiedItems(),
+		get usesLimitSearch() {
+			return usesLimitSearch.value;
+		},
+		get itemsPageLimit() {
+			return enable_custom_items_per_page.value
+				? items_per_page.value
+				: itemsPerPage.value;
+		},
+		getBackgroundSyncPriceList: () => {
+			const customerPriceList =
+				typeof customer_price_list.value === "string"
+					? customer_price_list.value.trim()
+					: "";
+			const profilePriceList =
+				typeof pos_profile.value?.selling_price_list === "string"
+					? pos_profile.value.selling_price_list.trim()
+					: "";
+
+			if (forceCustomerPriceList.value && customerPriceList) {
+				return customerPriceList;
+			}
+
+			return profilePriceList || customerPriceList || null;
+		},
+		refreshModifiedItems: (priceListOverride) =>
+			itemsIntegration.refreshModifiedItems(priceListOverride),
 		backgroundSyncItems: (args) => itemsIntegration.backgroundSyncItems(args),
 		get_items: (force) => itemsIntegration.get_items(force),
+		search_onchange: (value, fromScanner) =>
+			itemsIntegration.search_onchange(value, fromScanner),
+		fetchServerItemsTimestamp,
+		eventBus,
+		getItems: () => items.value,
+		getDisplayedItems: () => displayedItems.value,
 		itemDetailFetcher,
 	});
 
@@ -877,9 +919,9 @@ onMounted(async () => {
 
 					isInitialized.value = true;
 					startItemWorker();
+					itemsSelectorSettings.loadItemSettings();
 					itemDetailFetcher.update_cur_items_details();
 					itemSync.startBackgroundSyncScheduler();
-					itemsSelectorSettings.loadItemSettings();
 				} catch (err: any) {
 					console.error("ItemsSelector: Initialization failed", err);
 					initError.value = err.message || err;
@@ -1126,6 +1168,7 @@ defineExpose({
 	onScannerOpened,
 	onScannerClosed,
 	new_line,
+	temp_new_line,
 	clearSearchAndQty,
 	onQtyBlur,
 	hide_qty_decimals,
