@@ -1,4 +1,4 @@
-<!-- eslint-disable vue/multi-word-component-names -->
+﻿<!-- eslint-disable vue/multi-word-component-names -->
 <template>
 	<div :class="['payment-shell', { 'payment-shell--dialog': dialogMode }]">
 		<v-card
@@ -250,7 +250,11 @@ import { usePaymentMethods } from "../../composables/pos/payments/usePaymentMeth
 import { useInvoiceDetails } from "../../composables/pos/invoice/useInvoiceDetails";
 import { useFormat } from "../../format";
 import { isOffline } from "../../../offline/index";
-import { initializePaymentLinesForDialog } from "../../utils/paymentInitialization";
+import {
+	initializePaymentLinesForDialog,
+	rebalancePreferredPaymentLine,
+	resolvePreferredPaymentLine,
+} from "../../utils/paymentInitialization";
 
 // Components
 import PaymentSummary from "./payments/PaymentSummary.vue";
@@ -295,6 +299,7 @@ const {
 
 const { selectedCustomer, customerInfo } = storeToRefs(customersStore);
 const { activeView, paymentDialogOpen } = storeToRefs(uiStore);
+const { invoiceType } = storeToRefs(invoiceStore);
 
 // State
 const is_return = ref(false);
@@ -304,7 +309,6 @@ const redeem_customer_credit = ref(false);
 const pos_profile = ref("");
 const stock_settings = ref("");
 const pos_settings = ref({});
-const invoiceType = ref("Invoice");
 const is_cashback = ref(true);
 const paid_change = ref(0);
 const credit_change = ref(0);
@@ -528,7 +532,7 @@ const {
 	eventBus: eventBus,
 });
 
-const { ensureReturnPaymentsAreNegative, validateSubmission, submitInvoice } = usePaymentSubmission({
+const { ensureReturnPaymentsAreNegative, restoreReturnPayments, validateSubmission, submitInvoice } = usePaymentSubmission({
 	invoiceDoc: computed(() => invoiceStore.invoiceDoc),
 	posProfile: pos_profile,
 	stockSettings: stock_settings,
@@ -588,38 +592,60 @@ const releaseActiveFocus = () => {
 	}
 };
 
+const triggerSearchFocusRecovery = () => {
+	nextTick(() => {
+		uiStore.triggerItemSearchFocus();
+		if (eventBus && typeof eventBus.emit === "function") {
+			eventBus.emit("focus_item_search");
+		}
+	});
+};
+
 const queueSearchRefocusRecovery = () => {
 	if (typeof window === "undefined") {
+		triggerSearchFocusRecovery();
 		return;
 	}
 
-	let recovered = false;
 	let fallbackTimer = null;
+	let cleanupTimer = null;
 	const recover = () => {
-		if (recovered) return;
-		recovered = true;
+		triggerSearchFocusRecovery();
+	};
+
+	const cleanup = () => {
+		window.removeEventListener("focus", onWindowFocus);
 		if (fallbackTimer) {
 			clearTimeout(fallbackTimer);
 			fallbackTimer = null;
 		}
-		nextTick(() => {
-			uiStore.triggerItemSearchFocus();
-			if (eventBus && typeof eventBus.emit === "function") {
-				eventBus.emit("focus_item_search");
-			}
-		});
+		if (cleanupTimer) {
+			clearTimeout(cleanupTimer);
+			cleanupTimer = null;
+		}
 	};
 
 	const onWindowFocus = () => {
-		window.removeEventListener("focus", onWindowFocus);
 		recover();
+		cleanup();
 	};
 
-	window.addEventListener("focus", onWindowFocus, { once: true });
+	window.addEventListener("focus", onWindowFocus);
+	if (fallbackTimer) {
+		clearTimeout(fallbackTimer);
+		fallbackTimer = null;
+	}
 	fallbackTimer = setTimeout(() => {
-		window.removeEventListener("focus", onWindowFocus);
 		recover();
+		cleanup();
 	}, 900);
+	if (cleanupTimer) {
+		clearTimeout(cleanupTimer);
+		cleanupTimer = null;
+	}
+	cleanupTimer = setTimeout(() => {
+		cleanup();
+	}, 10000);
 };
 
 const back_to_invoice = () => {
@@ -684,11 +710,7 @@ const syncPreferredPaymentToCurrentTotal = (doc = invoice_doc.value) => {
 		return null;
 	}
 
-	const preferredPayment =
-		payments.find((payment) => payment.default === 1 || payment.default === true) ||
-		payments.find((payment) => isCashLikePayment(payment)) ||
-		payments[0];
-
+	const preferredPayment = resolvePreferredPaymentLine(doc, isCashLikePayment);
 	if (!preferredPayment) {
 		return null;
 	}
@@ -726,6 +748,26 @@ const syncPreferredPaymentToCurrentTotal = (doc = invoice_doc.value) => {
 	}
 
 	return preferredPayment;
+};
+
+const rebalancePreferredPaymentCoverage = () => {
+	const doc = invoice_doc.value;
+	if (
+		!doc ||
+		doc.is_return ||
+		is_credit_sale.value ||
+		!Array.isArray(doc.payments) ||
+		!doc.payments.length
+	) {
+		return null;
+	}
+
+	return rebalancePreferredPaymentLine(doc, {
+		precision: currency_precision.value,
+		isCashLikePayment,
+		loyaltyAmount: invoice_doc.value?.loyalty_amount || loyalty_amount.value,
+		redeemedCustomerCredit: redeemed_customer_credit.value,
+	});
 };
 
 const ensurePaymentLinesInitialized = (doc = invoice_doc.value) => {
@@ -1076,6 +1118,35 @@ watch(
 	{ immediate: true },
 );
 
+watch(
+	invoiceType,
+	(data) => {
+		if (invoice_doc.value && data !== "Order") {
+			invoice_doc.value.posa_delivery_date = null;
+			invoice_doc.value.posa_notes = null;
+			invoice_doc.value.posa_authorization_code = null;
+			invoice_doc.value.shipping_address_name = null;
+		} else if (invoice_doc.value && data === "Order") {
+			new_delivery_date.value = formatDateDisplay(frappe.datetime.now_date());
+			update_delivery_date();
+		}
+		if (invoice_doc.value && data === "Return") {
+			invoice_doc.value.is_return = 1;
+			ensureReturnPaymentsAreNegative();
+			is_return.value = true;
+			is_credit_return.value = false;
+			return_valid_upto_date.value = null;
+		} else if (invoice_doc.value) {
+			invoice_doc.value.is_return = 0;
+			is_return.value = false;
+			is_credit_return.value = false;
+			return_valid_upto_date.value = null;
+			restoreReturnPayments();
+		}
+	},
+	{ immediate: true },
+);
+
 watch(diff_payment, (newVal) => {
 	if (is_user_editing_paid_change.value) return;
 
@@ -1144,26 +1215,12 @@ watch(loyalty_amount, (value) => {
 			baseAmount / (customer_info.value.conversion_factor || 1),
 		);
 
-		if (!is_credit_sale.value && invoice_doc.value.payments) {
-			const default_payment = invoice_doc.value.payments.find((p) => p.default === 1);
-			if (default_payment) {
-				const invoice_total = invoice_doc.value.rounded_total || invoice_doc.value.grand_total;
-				const other_payments = invoice_doc.value.payments.reduce((sum, p) => {
-					if (p !== default_payment) {
-						return sum + flt(p.amount);
-					}
-					return sum;
-				}, 0);
-				const loyalty = flt(invoice_doc.value.loyalty_amount);
-				const credit = flt(redeemed_customer_credit.value);
-
-				let new_amount = invoice_total - loyalty - credit - other_payments;
-				if (new_amount < 0) new_amount = 0;
-
-				default_payment.amount = flt(new_amount, currency_precision.value);
-			}
-		}
+		rebalancePreferredPaymentCoverage();
 	}
+});
+
+watch(redeemed_customer_credit, () => {
+	rebalancePreferredPaymentCoverage();
 });
 
 watch(sales_person, (newVal) => {
@@ -1335,24 +1392,6 @@ onMounted(() => {
 				}
 			}
 		});
-		eventBus.on("update_invoice_type", (data) => {
-			invoiceType.value = data;
-			if (invoice_doc.value && data !== "Order") {
-				invoice_doc.value.posa_delivery_date = null;
-				invoice_doc.value.posa_notes = null;
-				invoice_doc.value.posa_authorization_code = null;
-				invoice_doc.value.shipping_address_name = null;
-			} else if (invoice_doc.value && data === "Order") {
-				new_delivery_date.value = formatDateDisplay(frappe.datetime.now_date());
-				update_delivery_date();
-			}
-			if (invoice_doc.value && data === "Return") {
-				invoice_doc.value.is_return = 1;
-				ensureReturnPaymentsAreNegative();
-				is_credit_return.value = false;
-				return_valid_upto_date.value = null;
-			}
-		});
 		eventBus.on("set_pos_settings", (data) => {
 			pos_settings.value = data || {};
 			if (invoice_doc.value && !invoice_doc.value.is_return) {
@@ -1382,7 +1421,6 @@ onBeforeUnmount(() => {
 	eventBus.off("send_invoice_doc_payment");
 	eventBus.off("register_pos_profile");
 	eventBus.off("add_the_new_address");
-	eventBus.off("update_invoice_type");
 	eventBus.off("set_pos_settings");
 	eventBus.off("set_mpesa_payment");
 	eventBus.off("queue_submit_payment_shortcut", queueShortcutSubmit);
@@ -1417,7 +1455,7 @@ onBeforeUnmount(() => {
 }
 
 .payment-shell--dialog {
-	height: calc(100vh - 48px);
+	height: calc(100dvh - 48px);
 	display: flex;
 	flex-direction: column;
 	gap: var(--pos-space-2);
@@ -1543,6 +1581,11 @@ onBeforeUnmount(() => {
 
 .payment-footer {
 	flex: 0 0 auto;
+	position: sticky;
+	bottom: 0;
+	z-index: 8;
+	padding-top: 8px;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0), var(--pos-surface) 30%);
 }
 
 .payment-footer--dialog {
@@ -1665,8 +1708,11 @@ onBeforeUnmount(() => {
 	}
 
 	.payment-footer {
-		position: static;
+		position: sticky;
 		margin-top: 0;
+		padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
 	}
+
 }
 </style>
+

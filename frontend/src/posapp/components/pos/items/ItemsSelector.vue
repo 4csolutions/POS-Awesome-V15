@@ -1,5 +1,5 @@
 <template>
-	<div :style="responsiveStyles">
+	<div class="items-selector-shell" :style="responsiveStyles">
 		<ScanErrorDialog
 			v-model="scanErrorDialog"
 			:message="scanErrorMessage"
@@ -9,16 +9,11 @@
 		/>
 		<v-card
 			:class="[
-				'selection mx-auto my-0 py-0 mt-3 pos-card dynamic-card resizable pos-themed-card',
+				'selection selection-card mx-auto my-0 py-0 mt-3 pos-card dynamic-card resizable pos-themed-card',
+				{ 'selection-card--phone': isPhone },
 				rtlClasses,
 			]"
-			:style="{
-				height: responsiveStyles['--container-height'],
-				maxHeight: responsiveStyles['--container-height'],
-				resize: 'vertical',
-				overflow: 'auto',
-				position: 'relative',
-			}"
+			:style="selectorCardStyle"
 		>
 			<v-progress-linear
 				:active="isLoadingOrSyncing"
@@ -31,9 +26,6 @@
 			<!-- Add dynamic-padding wrapper like Invoice component -->
 			<div class="dynamic-padding">
 				<v-card flat class="selector-section-card selector-header-card pos-themed-card">
-					<div class="section-card-heading">
-						<h3 class="section-card-heading__title">{{ __("Item Search") }}</h3>
-					</div>
 					<ItemHeader
 						v-model:search-input="search_input"
 						v-model:qty-input="debounce_qty"
@@ -79,9 +71,6 @@
 				/>
 
 				<v-card flat class="selector-section-card selector-results-card pos-themed-card">
-					<div class="section-card-heading section-card-heading--with-padding">
-						<h3 class="section-card-heading__title">{{ __("Available Items") }}</h3>
-					</div>
 					<v-row class="items">
 						<v-col cols="12" class="pt-0 mt-0">
 							<ItemsSelectorCards
@@ -153,12 +142,20 @@
 			:active-price-list="active_price_list"
 			:offers-count="offersCount"
 			:coupons-count="couponsCount"
+			:reserve-bottom-dock-space="context === 'pos' && responsive.windowWidth.value < 1100"
 			@open-offers="uiStore.setActiveView('offers')"
 			@open-coupons="uiStore.setActiveView('coupons')"
 		/>
 
 		<!-- New Item Dialog -->
-		<NewItemDialog v-model="newItemDialog" :items-group="items_group" @item-created="handleItemCreated" />
+		<NewItemDialog
+			v-model="newItemDialog"
+			:items-group="items_group"
+			:camera-enabled="!!pos_profile.posa_enable_camera_scanning"
+			:scanned-barcode="newItemDialogScannedBarcode"
+			@request-camera-scan="startNewItemBarcodeScan"
+			@item-created="handleItemCreated"
+		/>
 
 		<!-- Camera Scanner Component -->
 		<CameraScanner
@@ -184,6 +181,7 @@ import {
 	reactive,
 	inject,
 	type Ref,
+	type CSSProperties,
 } from "vue";
 import { storeToRefs } from "pinia";
 import * as _ from "lodash";
@@ -197,6 +195,7 @@ import ItemsSelectorCards from "./ItemsSelectorCards.vue";
 import ItemsSelectorTable from "./ItemsSelectorTable.vue";
 import NewItemDialog from "./NewItemDialog.vue";
 import ScanErrorDialog from "./ScanErrorDialog.vue";
+import { resetNewItemDialogState } from "./newItemDialogState";
 
 import { useResponsive } from "../../../composables/core/useResponsive";
 import { useRtl } from "../../../composables/core/useRtl";
@@ -250,6 +249,8 @@ const uiStore = useUIStore();
 const invoiceStore = useInvoiceStore();
 const { selectedCustomer } = storeToRefs(customersStore);
 const { posProfile: uiPosProfile, searchFocusTrigger, activeView } = storeToRefs(uiStore);
+const { deferStockValidationToPayment: invoiceTypeDefersStockValidation } =
+	storeToRefs(invoiceStore);
 
 const __ = (window as any).__;
 
@@ -298,6 +299,8 @@ const {
 
 // 2. Local State & Settings
 const newItemDialog = ref(false);
+const newItemDialogScannedBarcode = ref("");
+const newItemDialogAwaitingScan = ref(false);
 const qty = ref(1);
 const search_input = ref("");
 const first_search = ref("");
@@ -319,7 +322,6 @@ const item_group = computed({
 		itemsIntegration.item_group.value = normalized;
 	},
 });
-const current_invoice_type = ref("Invoice");
 const virtualScrollBuffer = ref(200);
 const localStorageAvailable = ref(true);
 
@@ -372,7 +374,7 @@ const isReturnInvoice = computed(() => {
 });
 
 const blockSaleBeyondAvailableQty = computed(() => {
-	if (["Order", "Quotation"].includes(current_invoice_type.value)) {
+	if (props.context === "purchase" || invoiceTypeDefersStockValidation.value) {
 		return false;
 	}
 	return parseBooleanSetting(
@@ -381,7 +383,7 @@ const blockSaleBeyondAvailableQty = computed(() => {
 });
 
 const deferStockValidationToPayment = computed(() =>
-	["Order", "Quotation"].includes(current_invoice_type.value),
+	props.context === "purchase" || invoiceTypeDefersStockValidation.value,
 );
 const forceCustomerPriceList = computed(() =>
 	parseBooleanSetting(pos_profile.value?.posa_force_price_from_customer_price_list),
@@ -709,6 +711,7 @@ const handleRemoteStockAdjustment = (payload: unknown) => {
 
 // 7. Lifecycle Hooks
 const openNewItemDialog = () => {
+	resetNewItemDialogState(newItemDialogScannedBarcode, newItemDialogAwaitingScan);
 	newItemDialog.value = true;
 };
 
@@ -881,7 +884,6 @@ onMounted(async () => {
 		eventBus.on("update_customer_price_list", (priceList) => {
 			syncSelectorPriceList(priceList);
 		});
-		eventBus.on("update_invoice_type", handleInvoiceTypeUpdate);
 		eventBus.on("focus_item_search", requestItemSearchFocus);
 		eventBus.on("remote_stock_adjustment", handleRemoteStockAdjustment);
 	}
@@ -953,7 +955,6 @@ onBeforeUnmount(() => {
 	if (eventBus) {
 		eventBus.off("update_currency");
 		eventBus.off("update_customer_price_list");
-		eventBus.off("update_invoice_type", handleInvoiceTypeUpdate);
 		eventBus.off("focus_item_search", requestItemSearchFocus);
 		eventBus.off("remote_stock_adjustment", handleRemoteStockAdjustment);
 	}
@@ -1014,6 +1015,21 @@ const {
 } = scannerInput;
 const { responsiveStyles } = responsive;
 const { rtlClasses } = rtl;
+const isPhone = computed(() => responsive.isPhone.value);
+const canResizeSelectorPanel = computed(
+	() => responsive.windowWidth.value >= 1280 && responsive.windowHeight.value >= 860,
+);
+const phoneSelectorHeight = "calc(var(--viewport-height) - var(--bottom-safe-space) - 24px)";
+const selectorCardStyle = computed<CSSProperties>(() => ({
+	height: isPhone.value ? phoneSelectorHeight : responsiveStyles.value["--container-height"],
+	maxHeight: isPhone.value ? phoneSelectorHeight : responsiveStyles.value["--container-height"],
+	minHeight: isPhone.value
+		? "calc(var(--viewport-height) * 0.46)"
+		: responsiveStyles.value["--container-height"],
+	resize: canResizeSelectorPanel.value ? "vertical" : "none",
+	overflow: "auto",
+	position: "relative",
+}));
 
 // Proxy functions for template
 const esc_event = () => clearSearch();
@@ -1054,14 +1070,21 @@ const onQtyBlur = () => {
 const startCameraScanning = () => {
 	itemsSelectorFocus.startCameraScanning();
 };
+const startNewItemBarcodeScan = () => {
+	newItemDialogScannedBarcode.value = "";
+	newItemDialogAwaitingScan.value = true;
+	startCameraScanning();
+};
 const forceReloadItems = () => itemsIntegration.get_items(true);
 const cancelItemDetailsRequest = () => itemDetailFetcher.cancelItemDetailsRequest();
 
 const onBarcodeScanned = async (code: string) => {
-	// This function body was empty in the instruction, keeping it empty or adding a placeholder
-	// The original onBarcodeScanned from scannerInput is now aliased as onBarcodeScannedFromScannerInput
-	// If the intent was to override it, the body should be provided.
-	// For now, calling the original one if it exists.
+	if (newItemDialog.value && newItemDialogAwaitingScan.value) {
+		newItemDialogScannedBarcode.value = code;
+		newItemDialogAwaitingScan.value = false;
+		return;
+	}
+
 	if (onBarcodeScannedFromScannerInput) {
 		onBarcodeScannedFromScannerInput(code);
 	}
@@ -1076,11 +1099,7 @@ const onScannerOpened = () => {
 };
 const onScannerClosed = () => {
 	scannerInput.cameraScannerActive.value = false;
-};
-
-const handleInvoiceTypeUpdate = (type: unknown) => {
-	const normalized = typeof type === "string" ? type : "";
-	current_invoice_type.value = normalized || "Invoice";
+	newItemDialogAwaitingScan.value = false;
 };
 
 const getItemRowClass = (item) => ({
@@ -1095,6 +1114,7 @@ const getItemRowProps = (item) => ({
 
 const handleItemCreated = (_item) => {
 	newItemDialog.value = false;
+	resetNewItemDialogState(newItemDialogScannedBarcode, newItemDialogAwaitingScan);
 	itemsIntegration.get_items(true);
 };
 
@@ -1114,9 +1134,7 @@ defineExpose({
 	format_currency,
 	format_number,
 	currencySymbol,
-	openNewItemDialog: () => {
-		newItemDialog.value = true;
-	},
+	openNewItemDialog,
 	clearSearch,
 	onDragStart,
 	onDragEnd,
@@ -1196,12 +1214,21 @@ defineExpose({
 
 <style scoped>
 /* "dynamic-card" no longer composes from pos-card; the pos-card class is added directly in the template */
+.items-selector-shell {
+	min-height: 0;
+	min-width: 0;
+}
+
 .dynamic-padding {
 	/* Equal spacing on all sides for consistent alignment */
 	padding: var(--dynamic-sm);
 	display: flex;
 	flex-direction: column;
 	gap: var(--dynamic-sm);
+}
+
+.selection-card {
+	border-radius: 22px;
 }
 
 .selector-section-card {
@@ -1238,6 +1265,7 @@ defineExpose({
 .selector-results-card {
 	padding: var(--dynamic-xs);
 	overflow: hidden;
+	min-width: 0;
 }
 
 .dynamic-scroll {
@@ -1347,6 +1375,16 @@ defineExpose({
 	.dynamic-padding {
 		/* Reduce spacing uniformly on smaller screens */
 		padding: var(--dynamic-xs);
+	}
+
+	.selection-card {
+		margin-top: var(--dynamic-xs) !important;
+	}
+
+	.selector-header-card {
+		top: max(4px, env(safe-area-inset-top));
+		z-index: 12;
+		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 	}
 
 	.items-card-grid {
