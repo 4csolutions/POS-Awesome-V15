@@ -34,6 +34,115 @@ from frappe.utils import money_in_words
 from frappe.utils.background_jobs import enqueue
 
 
+def _has_post_submit_payment_work(data):
+    return bool(
+        flt((data or {}).get("redeemed_customer_credit"))
+        or flt((data or {}).get("paid_change"))
+        or flt((data or {}).get("credit_change"))
+    )
+
+
+def _run_post_submit_payments(invoice_doc, data, is_payment_entry, total_cash, cash_account, payments):
+    from posawesome.posawesome.api.invoice_processing.payment import _create_change_payment_entries
+
+    receive_entries = redeeming_customer_credit(
+        invoice_doc, data, is_payment_entry, total_cash, cash_account, payments
+    )
+    _create_change_payment_entries(
+        invoice_doc,
+        data,
+        invoice_doc.pos_profile,
+        cash_account,
+        receive_entries,
+    )
+
+
+def _process_post_submit_payments(
+    invoice_doc,
+    data,
+    is_payment_entry,
+    total_cash,
+    cash_account,
+    payments,
+    run_async=False,
+    user=None,
+):
+    if not _has_post_submit_payment_work(data):
+        return
+
+    if run_async:
+        user = user or getattr(getattr(frappe, "session", None), "user", None)
+        if user and hasattr(frappe, "publish_realtime"):
+            frappe.publish_realtime(
+                "pos_post_submit_payments_started",
+                {
+                    "invoice": invoice_doc.name,
+                    "doctype": invoice_doc.doctype,
+                },
+                user=user,
+            )
+        enqueue(
+            method=process_post_submit_payments_job,
+            queue="default",
+            timeout=3000,
+            is_async=True,
+            enqueue_after_commit=True,
+            kwargs={
+                "invoice": invoice_doc.name,
+                "doctype": invoice_doc.doctype,
+                "data": data,
+                "is_payment_entry": is_payment_entry,
+                "total_cash": total_cash,
+                "cash_account": cash_account,
+                "payments": payments,
+                "user": user,
+            },
+        )
+        return
+
+    _run_post_submit_payments(invoice_doc, data, is_payment_entry, total_cash, cash_account, payments)
+
+
+def process_post_submit_payments_job(kwargs):
+    invoice = kwargs.get("invoice")
+    try:
+        doctype = kwargs.get("doctype") or "Sales Invoice"
+        data = kwargs.get("data") or {}
+        is_payment_entry = kwargs.get("is_payment_entry")
+        total_cash = kwargs.get("total_cash")
+        cash_account = kwargs.get("cash_account")
+        payments = kwargs.get("payments") or []
+
+        invoice_doc = frappe.get_doc(doctype, invoice)
+        if invoice_doc.docstatus != 1:
+            return
+
+        invoice_doc.flags.ignore_permissions = True
+        frappe.flags.ignore_account_permission = True
+        _run_post_submit_payments(invoice_doc, data, is_payment_entry, total_cash, cash_account, payments)
+        user = kwargs.get("user")
+        if user and hasattr(frappe, "publish_realtime"):
+            frappe.publish_realtime(
+                "pos_post_submit_payments_completed",
+                {
+                    "invoice": invoice,
+                    "doctype": doctype,
+                },
+                user=user,
+            )
+    except Exception as e:
+        frappe.db.rollback()
+        error_msg = str(e)
+        frappe.log_error(f"POS Post Submit Payment Processing Failed for {invoice}: {error_msg}")
+        user = kwargs.get("user")
+        if user and hasattr(frappe, "publish_realtime"):
+            frappe.publish_realtime(
+                "pos_post_submit_payments_failed",
+                {"invoice": invoice, "error": error_msg},
+                user=user,
+            )
+
+
 def _resolve_write_off_limit(pos_profile_doc):
     if not pos_profile_doc:
         return None
@@ -152,6 +261,131 @@ def _sanitize_delivery_dates(payload):
             item["posa_delivery_date"] = _safe_date_string(item.get("posa_delivery_date"))
 
 
+def _build_fresh_invoice_payload(data, doctype):
+    fresh_data = dict(data or {})
+    fresh_data["doctype"] = doctype
+
+    for fieldname in (
+        "name",
+        "docstatus",
+        "status",
+        "amended_from",
+        "amendment_date",
+        "submitted_by",
+        "creation",
+        "owner",
+        "modified",
+        "modified_by",
+        "_liked_by",
+        "__last_sync_on",
+    ):
+        fresh_data.pop(fieldname, None)
+
+    return fresh_data
+
+
+def _clear_stale_party_fields_in_payload(
+    payload,
+    previous_customer,
+    previous_values=None,
+):
+    next_customer = (payload or {}).get("customer")
+    if not previous_customer or not next_customer or previous_customer == next_customer:
+        return payload
+
+    customer_dependent_fields = (
+        "customer_name",
+        "customer_address",
+        "address_display",
+        "shipping_address_name",
+        "contact_person",
+        "contact_display",
+        "contact_mobile",
+        "contact_email",
+        "territory",
+    )
+
+    for fieldname in customer_dependent_fields:
+        previous_value = (previous_values or {}).get(fieldname)
+        next_value = payload.get(fieldname)
+        if next_value not in (None, "") and next_value == previous_value:
+            payload[fieldname] = None
+
+    return payload
+
+
+def _clear_stale_party_fields_for_customer_change(
+    invoice_doc,
+    incoming_data,
+    previous_customer,
+    previous_values=None,
+):
+    next_customer = (incoming_data or {}).get("customer")
+    if not previous_customer or not next_customer or previous_customer == next_customer:
+        return invoice_doc
+
+    # Only clear fields that were carried over unchanged from the previous customer.
+    customer_dependent_fields = (
+        "customer_name",
+        "customer_address",
+        "address_display",
+        "shipping_address_name",
+        "contact_person",
+        "contact_display",
+        "contact_mobile",
+        "contact_email",
+        "territory",
+    )
+
+    for fieldname in customer_dependent_fields:
+        previous_value = (previous_values or {}).get(fieldname)
+        next_value = incoming_data.get(fieldname)
+        if next_value not in (None, "") and next_value == previous_value:
+            setattr(invoice_doc, fieldname, None)
+
+    return invoice_doc
+
+
+def _get_mutable_invoice_doc(data, doctype):
+    invoice_name = (data or {}).get("name")
+    if not invoice_name:
+        return frappe.get_doc(data)
+
+    if not frappe.db.exists(doctype, invoice_name):
+        return frappe.get_doc(_build_fresh_invoice_payload(data, doctype))
+
+    invoice_doc = frappe.get_doc(doctype, invoice_name)
+    previous_customer = invoice_doc.get("customer")
+    previous_values = {fieldname: invoice_doc.get(fieldname) for fieldname in (
+        "customer_name",
+        "customer_address",
+        "address_display",
+        "shipping_address_name",
+        "contact_person",
+        "contact_display",
+        "contact_mobile",
+        "contact_email",
+        "territory",
+    )}
+    if cint(invoice_doc.docstatus) != 0:
+        fresh_payload = _build_fresh_invoice_payload(data, doctype)
+        fresh_payload = _clear_stale_party_fields_in_payload(
+            fresh_payload,
+            previous_customer,
+            previous_values=previous_values,
+        )
+        return frappe.get_doc(fresh_payload)
+
+    invoice_doc.update(data)
+    invoice_doc = _clear_stale_party_fields_for_customer_change(
+        invoice_doc,
+        data,
+        previous_customer,
+        previous_values=previous_values,
+    )
+    return invoice_doc
+
+
 def _save_draft_with_latest_timestamp(invoice_doc, retries=2):
     attempts = 0
 
@@ -184,6 +418,22 @@ def _save_draft_with_latest_timestamp(invoice_doc, retries=2):
             invoice_doc = latest_doc
 
 
+def _resolve_payment_amounts(payment, conversion_rate=1):
+    rate = flt(conversion_rate) or 1
+    amount = payment.get("amount")
+    base_amount = payment.get("base_amount")
+
+    if amount in (None, "") and base_amount not in (None, ""):
+        amount = flt(flt(base_amount) / rate, payment.precision("amount"))
+
+    if amount in (None, ""):
+        amount = 0
+
+    amount = flt(amount, payment.precision("amount"))
+    base_amount = flt(flt(amount) * rate, payment.precision("base_amount"))
+    return amount, base_amount
+
+
 @frappe.whitelist()
 def update_invoice(data):
     currency_cache = {}
@@ -203,11 +453,7 @@ def update_invoice(data):
 
     return_validity_enabled, default_validity_days = _get_return_validity_settings(pos_profile)
 
-    if data.get("name"):
-        invoice_doc = frappe.get_doc(doctype, data.get("name"))
-        invoice_doc.update(data)
-    else:
-        invoice_doc = frappe.get_doc(data)
+    invoice_doc = _get_mutable_invoice_doc(data, doctype)
 
     # Set currency from data before set_missing_values
     # Validate return items if this is a return invoice
@@ -243,6 +489,14 @@ def update_invoice(data):
             invoice_doc.customer_name = cust.customer_name
         except Exception as e:
             frappe.log_error(f"Failed to create customer {customer_name}: {e}")
+
+    if invoice_doc.get("customer"):
+        resolved_customer_name = frappe.db.get_value(
+            "Customer",
+            invoice_doc.customer,
+            "customer_name",
+        )
+        invoice_doc.customer_name = resolved_customer_name or invoice_doc.get("customer_name") or invoice_doc.customer
 
     effective_price_list = _resolve_effective_price_list(
         invoice_doc.get("customer"),
@@ -353,7 +607,7 @@ def update_invoice(data):
 
         # Update payment amounts
         for payment in invoice_doc.payments:
-            payment.base_amount = flt(payment.amount * conversion_rate, payment.precision("base_amount"))
+            payment.amount, payment.base_amount = _resolve_payment_amounts(payment, conversion_rate)
 
         # Update invoice level amounts
         invoice_doc.base_total = flt(invoice_doc.total * conversion_rate, invoice_doc.precision("base_total"))
@@ -387,12 +641,12 @@ def update_invoice(data):
     # For return invoices, payments should be negative amounts
     if invoice_doc.is_return:
         for payment in invoice_doc.payments:
-            normalized_amount = -abs(flt(payment.amount))
-            payment.amount = normalized_amount
-            if payment.base_amount is not None:
-                payment.base_amount = -abs(flt(payment.base_amount))
-            else:
-                payment.base_amount = normalized_amount
+            resolved_amount, resolved_base_amount = _resolve_payment_amounts(
+                payment,
+                invoice_doc.get("conversion_rate") or conversion_rate,
+            )
+            payment.amount = -abs(resolved_amount)
+            payment.base_amount = -abs(resolved_base_amount)
 
         invoice_doc.paid_amount = flt(sum(p.amount for p in invoice_doc.payments))
         invoice_doc.base_paid_amount = flt(sum(p.base_amount for p in invoice_doc.payments))
@@ -412,7 +666,6 @@ def update_invoice(data):
 
 @frappe.whitelist()
 def submit_invoice(invoice, data, submit_in_background=False):
-    from posawesome.posawesome.api.invoice_processing.payment import _create_change_payment_entries
     data = json.loads(data)
     invoice = json.loads(invoice)
     _sanitize_delivery_dates(invoice)
@@ -426,6 +679,12 @@ def submit_invoice(invoice, data, submit_in_background=False):
         doctype = "POS Invoice"
 
     invoice_name = invoice.get("name")
+    if invoice_name and frappe.db.exists(doctype, invoice_name):
+        existing_doc = frappe.get_doc(doctype, invoice_name)
+        if cint(existing_doc.docstatus) != 0:
+            invoice = _build_fresh_invoice_payload(invoice, doctype)
+            invoice_name = None
+
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
         created = update_invoice(json.dumps(invoice))
         invoice_name = created.get("name")
@@ -474,7 +733,13 @@ def submit_invoice(invoice, data, submit_in_background=False):
     # calculating cash
     total_cash = 0
     if data.get("redeemed_customer_credit"):
-        total_cash = invoice_doc.total - float(data.get("redeemed_customer_credit"))
+        invoice_total = flt(invoice_doc.rounded_total or invoice_doc.grand_total)
+        settled_without_cash = (
+            flt(data.get("redeemed_customer_credit"))
+            + flt(invoice_doc.get("loyalty_amount"))
+            + flt(invoice_doc.get("write_off_amount"))
+        )
+        total_cash = max(invoice_total - settled_without_cash, 0)
 
     is_payment_entry = 0
     if data.get("redeemed_customer_credit"):
@@ -550,19 +815,26 @@ def submit_invoice(invoice, data, submit_in_background=False):
                 "total_cash": total_cash,
                 "cash_account": cash_account,
                 "payments": payments,
+                "user": getattr(getattr(frappe, "session", None), "user", None),
             },
         )
     else:
         invoice_doc.submit()
-
-        _create_change_payment_entries(invoice_doc, data, pos_profile, cash_account)
-        redeeming_customer_credit(invoice_doc, data, is_payment_entry, total_cash, cash_account, payments)
+        _process_post_submit_payments(
+            invoice_doc,
+            data,
+            is_payment_entry,
+            total_cash,
+            cash_account,
+            payments,
+            run_async=bool(allow_background_submit),
+            user=getattr(getattr(frappe, "session", None), "user", None),
+        )
 
     return {"name": invoice_doc.name, "status": invoice_doc.docstatus}
 
 
 def submit_in_background_job(kwargs):
-    from posawesome.posawesome.api.invoice_processing.payment import _create_change_payment_entries
     invoice = kwargs.get("invoice")
     try:
         doctype = kwargs.get("doctype") or "Sales Invoice"
@@ -571,6 +843,7 @@ def submit_in_background_job(kwargs):
         total_cash = kwargs.get("total_cash")
         cash_account = kwargs.get("cash_account")
         payments = kwargs.get("payments") or []
+        user = kwargs.get("user") or getattr(getattr(frappe, "session", None), "user", None)
 
         invoice_doc = frappe.get_doc(doctype, invoice)
 
@@ -606,9 +879,26 @@ def submit_in_background_job(kwargs):
         invoice_doc = _save_draft_with_latest_timestamp(invoice_doc)
 
         invoice_doc.submit()
-
-        _create_change_payment_entries(invoice_doc, data, invoice_doc.pos_profile, cash_account)
-        redeeming_customer_credit(invoice_doc, data, is_payment_entry, total_cash, cash_account, payments)
+        if hasattr(frappe, "publish_realtime"):
+            frappe.publish_realtime(
+                "pos_invoice_processed",
+                {
+                    "invoice": invoice_doc.name,
+                    "doctype": invoice_doc.doctype,
+                    "has_post_submit_payment_work": _has_post_submit_payment_work(data),
+                },
+                user=user,
+            )
+        _process_post_submit_payments(
+            invoice_doc,
+            data,
+            is_payment_entry,
+            total_cash,
+            cash_account,
+            payments,
+            run_async=True,
+            user=user,
+        )
 
     except Exception as e:
         frappe.db.rollback()
@@ -617,7 +907,7 @@ def submit_in_background_job(kwargs):
         frappe.publish_realtime(
             "pos_invoice_submit_error",
             {"invoice": invoice, "error": error_msg},
-            user=frappe.session.user,
+            user=user,
         )
 
 @frappe.whitelist()
