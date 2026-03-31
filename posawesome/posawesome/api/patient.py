@@ -1,5 +1,8 @@
 import frappe
-from frappe.utils import flt
+import json
+from frappe.utils import flt, get_datetime
+from frappe import _
+from frappe.utils.caching import redis_cache
 from posawesome.posawesome.api.utils import _ensure_pos_profile
 
 @frappe.whitelist()
@@ -223,3 +226,70 @@ def get_patient_medications(patient, pos_profile, encounter=None):
             final_cart_items.append(cart_item)
 
     return final_cart_items
+
+
+@frappe.whitelist()
+def search_patients(search_term=""):
+    meta = frappe.get_meta("Patient")
+    search_fields = meta.search_fields.split(",") if meta.search_fields else []
+    
+    or_filters = {
+        "name": ["like", f"%{search_term}%"]
+    }
+    for field in search_fields:
+        field = field.strip()
+        or_filters[field] = ["like", f"%{search_term}%"]
+        
+    return frappe.get_all(
+        "Patient",
+        filters={"status": ["!=", "Disabled"]},
+        or_filters=or_filters,
+        fields=["name", "patient_name", "mobile", "customer"],
+        limit_page_length=20
+    )
+
+
+@frappe.whitelist()
+def get_patient_names(pos_profile, limit=None, offset=None, start_after=None, modified_after=None):
+    _pos_profile = json.loads(pos_profile)
+    ttl = _pos_profile.get("posa_server_cache_duration")
+    if ttl:
+        ttl = int(ttl) * 60
+
+    @redis_cache(ttl=ttl or 1800)
+    def __get_patient_names(pos_profile, limit=None, offset=None, start_after=None, modified_after=None):
+        return _get_patient_names(pos_profile, limit, offset, start_after, modified_after)
+
+    def _get_patient_names(pos_profile, limit=None, offset=None, start_after=None, modified_after=None):
+        filters = {"status": ["!=", "Disabled"]}
+
+        if modified_after:
+            try:
+                parsed_modified_after = get_datetime(modified_after)
+            except Exception:
+                frappe.throw(_("modified_after must be a valid ISO datetime"))
+            filters["modified"] = [">", parsed_modified_after.isoformat()]
+
+        if start_after:
+            filters["name"] = [">", start_after]
+
+        patients = frappe.get_all(
+            "Patient",
+            filters=filters,
+            fields=["name", "patient_name", "mobile", "customer"],
+            order_by="name",
+            limit_start=None if start_after else offset,
+            limit_page_length=limit,
+        )
+        return patients
+
+    if _pos_profile.get("posa_use_server_cache") and not (limit or offset or start_after or modified_after):
+        return __get_patient_names(pos_profile, limit, offset, start_after, modified_after)
+    else:
+        return _get_patient_names(pos_profile, limit, offset, start_after, modified_after)
+
+
+@frappe.whitelist()
+def get_patients_count(pos_profile):
+    filters = {"status": ["!=", "Disabled"]}
+    return frappe.db.count("Patient", filters)

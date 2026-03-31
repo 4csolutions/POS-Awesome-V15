@@ -731,6 +731,45 @@ export async function clearCustomerStorage() {
 	}
 }
 
+export function setPatientsLastSync(timestamp) {
+	if (typeof localStorage !== "undefined") {
+		if (timestamp) {
+			localStorage.setItem("posa_patients_last_sync", timestamp);
+		} else {
+			localStorage.removeItem("posa_patients_last_sync");
+		}
+	}
+}
+
+export function getPatientsLastSync() {
+	if (typeof localStorage !== "undefined") {
+		const val = localStorage.getItem("posa_patients_last_sync");
+		if (val === "null" || val === "undefined") return null;
+		return val;
+	}
+	return null;
+}
+
+export async function getPatientStorageCount() {
+	try {
+		await checkDbHealth();
+		if (!db.isOpen()) await db.open();
+		return await db.table("patients").count();
+	} catch {
+		return 0;
+	}
+}
+
+export async function clearPatientStorage() {
+	try {
+		await checkDbHealth();
+		if (!db.isOpen()) await db.open();
+		await db.table("patients").clear();
+	} catch (e) {
+		console.error("Failed to clear patient storage", e);
+	}
+}
+
 // Pricing Rules Logic
 function sanitiseSnapshot(snapshot = []) {
 	if (!Array.isArray(snapshot)) {

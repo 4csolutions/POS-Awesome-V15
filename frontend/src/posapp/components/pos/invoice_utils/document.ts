@@ -213,6 +213,9 @@ export function get_invoice_doc(context: any) {
 	// Determine if this is a return invoice
 	const isReturn = context.isReturnInvoice;
 	doc.is_return = isReturn ? 1 : 0;
+	if (isReturn) {
+		doc.naming_series = null;
+	}
 
 	// Calculate amounts in selected currency
 	const items = get_invoice_items(context);
