@@ -166,6 +166,15 @@
 			@scanner-opened="onScannerOpened"
 			@scanner-closed="onScannerClosed"
 		/>
+
+		<!-- Item Quantity and Batch Dialog -->
+		<ItemQuantityBatchDialog
+			v-model="itemQuantityBatchDialog"
+			:item="selectedItemForDialog"
+			:hide-qty-decimals="hide_qty_decimals"
+			:context="dialogContext"
+			@submit="handleDialogSubmit"
+		/>
 	</div>
 </template>
 
@@ -195,6 +204,7 @@ import ItemsSelectorCards from "./ItemsSelectorCards.vue";
 import ItemsSelectorTable from "./ItemsSelectorTable.vue";
 import NewItemDialog from "./NewItemDialog.vue";
 import ScanErrorDialog from "./ScanErrorDialog.vue";
+import ItemQuantityBatchDialog from "./ItemQuantityBatchDialog.vue";
 import { resetNewItemDialogState } from "./newItemDialogState";
 
 import { useResponsive } from "../../../composables/core/useResponsive";
@@ -311,6 +321,11 @@ const {
 const newItemDialog = ref(false);
 const newItemDialogScannedBarcode = ref("");
 const newItemDialogAwaitingScan = ref(false);
+
+const itemQuantityBatchDialog = ref(false);
+const selectedItemForDialog = ref<any>(null);
+const dialogContext = ref<any>({});
+
 const qty = ref(1);
 const search_input = ref("");
 const first_search = ref("");
@@ -575,6 +590,9 @@ const add_item = async (item, optionsOrQty: any = {}) => {
 			itemDetailFetcher,
 			items: invoiceStore.items,
 			isReturnInvoice: isReturnInvoice.value,
+			flt: (window as any).flt,
+			float_precision: pos_profile.value?.float_precision || 2,
+			currency_precision: pos_profile.value?.currency_precision || 2,
 			...options,
 			new_line:
 				typeof options?.new_line === "boolean"
@@ -596,6 +614,17 @@ const add_item = async (item, optionsOrQty: any = {}) => {
 		);
 
 		if (isValid) {
+			// Show popup if item has batch to enter quantity and select batch
+			if (item.has_batch_no && !item.to_set_batch_no) {
+				if (item.has_batch_no && (!item.batch_no_data || item.batch_no_data.length === 0)) {
+					await itemDetailFetcher.update_items_details([item], { forceRefresh: true });
+				}
+				selectedItemForDialog.value = item;
+				dialogContext.value = context;
+				itemQuantityBatchDialog.value = true;
+				return;
+			}
+
 			await useItemAddition().prepareItemForCart(item, requestedQty, context);
 			await useItemAddition().addItem(item, context);
 			if (eventBus && typeof eventBus.emit === "function") {
@@ -607,6 +636,35 @@ const add_item = async (item, optionsOrQty: any = {}) => {
 		emit("add-item", item);
 	}
 };
+
+const handleDialogSubmit = async ({ qty: selectedQty, batch_no }) => {
+	if (!selectedItemForDialog.value) return;
+
+	const item = selectedItemForDialog.value;
+	const context = { ...dialogContext.value, qty: selectedQty };
+
+	if (batch_no) {
+		item.to_set_batch_no = batch_no;
+		item.batch_no = batch_no;
+	}
+
+	await useItemAddition().prepareItemForCart(item, selectedQty, context);
+	await useItemAddition().addItem(item, context);
+
+	if (eventBus && typeof eventBus.emit === "function") {
+		eventBus.emit("apply_pricing_rules");
+	}
+	qty.value = 1;
+	itemQuantityBatchDialog.value = false;
+};
+
+watch(itemQuantityBatchDialog, (val) => {
+	if (!val) {
+		selectedItemForDialog.value = null;
+		clearSearch();
+		itemsSelectorFocus.focusItemSearch();
+	}
+});
 
 const scanProcessor = useScanProcessor({
 	items,
