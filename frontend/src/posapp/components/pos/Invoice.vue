@@ -276,6 +276,7 @@ import invoiceWatchers from "./invoice/invoiceWatchers";
 import shortcutMethods from "./invoice/invoiceShortcuts";
 import { useInvoiceStore } from "../../stores/invoiceStore.js";
 import { useCustomersStore } from "../../stores/customersStore.js";
+import { usePatientsStore } from "../../stores/patientsStore.js";
 import { useToastStore } from "../../stores/toastStore.js";
 import { useUIStore } from "../../stores/uiStore.js";
 import { storeToRefs } from "pinia";
@@ -303,6 +304,7 @@ export default {
 		const uiStore = useUIStore();
 		const invoiceStore = useInvoiceStore();
 		const customersStore = useCustomersStore();
+		const patientsStore = usePatientsStore();
 		const toastStore = useToastStore();
 		const { isOnline } = useOnlineStatus();
 
@@ -339,6 +341,7 @@ export default {
 			toastStore,
 			invoiceStore,
 			customersStore,
+			patientsStore,
 			selectedCustomer,
 			customerRefreshToken,
 			invoiceType,
@@ -358,6 +361,7 @@ export default {
 			stock_settings: "",
 			return_doc: "",
 			customer: "",
+			patient: null,
 			customer_info: "",
 			customer_balance: 0,
 			total_tax: 0,
@@ -713,8 +717,17 @@ export default {
 			this.pos_profile = data.pos_profile;
 			this.company = data.company || null;
 			this.customer = data.pos_profile.customer;
+			this.patient = null;
 			this.pos_opening_shift = data.pos_opening_shift;
 			this.stock_settings = data.stock_settings;
+
+			if (this.customersStore?.setSelectedCustomer) {
+				this.customersStore.setSelectedCustomer(this.customer || null);
+			}
+
+			if (this.patientsStore?.setSelectedPatient) {
+				this.patientsStore.setSelectedPatient(null);
+			}
 
 			this.invoiceType = this.pos_profile.posa_default_sales_order ? "Order" : "Invoice";
 

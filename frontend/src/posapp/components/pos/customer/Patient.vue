@@ -9,7 +9,7 @@
 				variant="solo"
 				color="primary"
 				:label="patientFieldLabel"
-				placeholder="Search patient"
+				:placeholder="patientFieldPlaceholder"
 				:loading="isPatientSearchLocked"
 				v-model="internalPatient"
 				:items="filteredPatients"
@@ -27,8 +27,20 @@
 				:virtual-scroll="true"
 				:virtual-scroll-item-height="48"
 			>
-				<!-- Prepend Reload Icon -->
+				<!-- Edit icon (left) -->
 				<template #prepend-inner>
+					<v-tooltip :text="__('Edit patient')" content-class="posa-theme-tooltip">
+						<template #activator="{ props }">
+							<v-icon
+								v-bind="props"
+								class="icon-button"
+								@mousedown.prevent.stop
+								@click.stop="edit_patient"
+							>
+								mdi-account-edit
+							</v-icon>
+						</template>
+					</v-tooltip>
 					<v-tooltip :text="__('Reload patients')" content-class="posa-theme-tooltip">
 						<template #activator="{ props }">
 							<v-icon
@@ -44,13 +56,26 @@
 					</v-tooltip>
 				</template>
 
-				<!-- Append Load Percent -->
+				<!-- Add icon (right) -->
 				<template #append-inner>
 					<span v-if="isPatientSearchLocked" class="patient-load-percent">
 						{{ patientLoadPercent }}%
 					</span>
+					<v-tooltip :text="__('Add new patient')" content-class="posa-theme-tooltip">
+						<template #activator="{ props }">
+							<v-icon
+								v-bind="props"
+								class="icon-button"
+								@mousedown.prevent.stop
+								@click.stop="new_patient"
+							>
+								mdi-plus
+							</v-icon>
+						</template>
+					</v-tooltip>
 				</template>
 
+				<!-- Dropdown display -->
 				<template #item="{ props, item }">
 					<v-list-item v-bind="props">
 						<v-list-item-subtitle v-if="item.raw.patient_name !== item.raw.name">
@@ -63,12 +88,13 @@
 				</template>
 			</v-autocomplete>
 			<v-progress-linear
-				v-if="syncState.showProgress"
-				:model-value="syncState.progress"
-				:color="syncState.color"
-				height="2"
-				class="sync-progress"
-			></v-progress-linear>
+				v-if="isPatientSearchLocked"
+				:model-value="patientLoadPercent"
+				height="4"
+				color="primary"
+				class="patient-load-bar"
+				rounded
+			/>
 		</div>
 	</div>
 </template>
@@ -96,6 +122,15 @@
 .patient-field-shell {
 	position: relative;
 	width: 100%;
+}
+
+.patient-load-bar {
+	position: absolute;
+	left: 10px;
+	right: 10px;
+	bottom: 6px;
+	z-index: 2;
+	opacity: 0.95;
 }
 
 .patient-autocomplete:hover {
@@ -129,223 +164,335 @@
 	cursor: not-allowed !important;
 }
 
-.sync-progress {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	border-radius: 0 0 12px 12px;
+.patient-load-percent {
+	font-size: 0.72rem;
+	font-weight: 700;
+	margin-right: 8px;
+	color: rgb(var(--v-theme-primary));
+	min-width: 42px;
+	text-align: right;
 }
 
-.patient-load-percent {
-	font-size: 0.75rem;
-	color: var(--v-theme-primary);
-	opacity: 0.8;
-	margin-right: 4px;
-	font-weight: 500;
+@media (max-width: 768px) {
+	.patient-input-wrapper {
+		padding-right: 0;
+	}
 }
 </style>
 
-<script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+<script>
+import { ref, computed, watch, onMounted, onBeforeUnmount, getCurrentInstance, nextTick } from "vue";
 import { storeToRefs } from "pinia";
+import _ from "lodash";
 import { useToastStore } from "../../../stores/toastStore.js";
 import { useCustomersStore } from "../../../stores/customersStore.js";
 import { usePatientsStore } from "../../../stores/patientsStore.js";
 
-const props = defineProps({
-	pos_profile: {
-		type: Object,
-		required: true,
-	}
-});
-
-const emit = defineEmits(["update:patient"]);
-
-const __ = window.__ || ((text) => text);
-const toastStore = useToastStore();
-const customersStore = useCustomersStore();
-const patientsStore = usePatientsStore();
-
-const { filteredPatients, isPatientBackgroundLoading, loadingPatients, loadProgress, isLoadComplete } = storeToRefs(patientsStore);
-
-const internalPatient = ref(null);
-const patientDropdown = ref(null);
-const isMenuOpen = ref(false);
-const readonlyState = ref(false);
-const tempSelectedPatient = ref(null);
-
-watch(
-	() => props.pos_profile,
-	(newProfile) => {
-		if (newProfile) {
-			patientsStore.setPosProfile(newProfile);
-			patientsStore.get_patient_names();
-		}
+export default {
+	props: {
+		pos_profile: Object,
 	},
-	{ immediate: true },
-);
+	setup(props, { expose, emit }) {
+		const { proxy } = getCurrentInstance();
+		const toastStore = useToastStore();
+		const customersStore = useCustomersStore();
+		const patientsStore = usePatientsStore();
 
-const effectiveReadonly = computed(() => readonlyState.value);
-const patientFieldLabel = computed(() => __("Patient"));
-const networkOnline = computed(() => navigator.onLine);
+		const { 
+			selectedPatient, 
+			filteredPatients, 
+			isPatientBackgroundLoading, 
+			loadingPatients, 
+			loadProgress, 
+			isLoadComplete,
+			patientInfo
+		} = storeToRefs(patientsStore);
 
-const isPatientSearchLocked = computed(() => {
-	if (!navigator.onLine) return false;
-	const isCurrentlyLoading = loadingPatients.value || isPatientBackgroundLoading.value;
-	return isCurrentlyLoading && (!loadProgress.value || loadProgress.value < 100);
-});
+		const internalPatient = ref(null);
+		const tempSelectedPatient = ref(null);
+		const isMenuOpen = ref(false);
+		const patientDropdown = ref(null);
+		const readonlyState = ref(false);
 
-const patientLoadPercent = computed(() => {
-	if (!isPatientSearchLocked.value) return 100;
-	return Math.round(loadProgress.value || 0);
-});
+		let scrollContainer = null;
 
-const syncState = computed(() => {
-	const progress = loadProgress.value || 0;
-	if (progress === 100 && isLoadComplete.value) {
-		return { showProgress: false, progress: 100, color: "success" };
-	}
-	const show = loadingPatients.value || isPatientBackgroundLoading.value;
-	return {
-		showProgress: show,
-		progress,
-		color: progress > 0 ? "primary" : "secondary",
-	};
-});
+		const __ = window.__ || ((text) => text);
+		const networkOnline = computed(() => navigator.onLine);
+		const effectiveReadonly = computed(() => readonlyState.value);
 
-const patientNoDataText = computed(() => {
-	if (isPatientBackgroundLoading.value || loadingPatients.value) {
-		return __("Loading patients...");
-	}
-	return __("Patients not found");
-});
-
-const reload_patients = async () => {
-	if (!navigator.onLine) {
-		toastStore.show({
-			title: __("Offline"),
-			text: __("Cannot reload patients while offline."),
-			color: "warning",
+		const isPatientSearchLocked = computed(() => {
+			if (!networkOnline.value) return false;
+			const isCurrentlyLoading = loadingPatients.value || isPatientBackgroundLoading.value;
+			return isCurrentlyLoading && (!loadProgress.value || loadProgress.value < 100);
 		});
-		return;
-	}
-	await patientsStore.reloadPatients();
-	toastStore.show({
-		title: __("Patients Reloaded"),
-		color: "success",
-	});
-};
 
-const commitPatientChange = (val) => {
-	emit("update:patient", val || null);
-	patientsStore.setSelectedPatient(val || null);
-	
-	if (val) {
-		const selected = filteredPatients.value.find((p) => p.name === val);
-		if (selected && selected.customer) {
-			customersStore.searchCustomers(selected.customer).then(() => {
-				customersStore.setSelectedCustomer(selected.customer);
+		const patientLoadPercent = computed(() =>
+			Math.max(0, Math.min(100, Math.round(loadProgress.value || 0))),
+		);
+
+		const patientFieldLabel = computed(() => 
+			isPatientSearchLocked.value 
+				? `${frappe._("Loading patients")} ${patientLoadPercent.value}%`
+				: frappe._("Patient"),
+		);
+
+		const patientFieldPlaceholder = computed(() => 
+			isPatientSearchLocked.value 
+				? `${__("Loading patients...")} ${patientLoadPercent.value}%`
+				: __("Search patient"),
+		);
+
+		const patientNoDataText = computed(() => {
+			if (isPatientSearchLocked.value) {
+				return `${__("Loading patients...")} ${patientLoadPercent.value}%`;
+			}
+			return __("Patients not found");
+		});
+
+		const searchDebounce = _.debounce((term) => {
+			patientsStore.queueSearch(term || "");
+		}, 300);
+
+		watch(
+			selectedPatient,
+			(value) => {
+				if (!isMenuOpen.value) {
+					internalPatient.value = value || null;
+				}
+			},
+			{ immediate: true },
+		);
+
+		watch(
+			() => props.pos_profile,
+			(profile) => {
+				if (profile) {
+					patientsStore.setPosProfile(profile);
+					patientsStore.get_patient_names();
+				}
+			},
+			{ immediate: true },
+		);
+
+		const detachScrollListener = () => {
+			if (scrollContainer) {
+				scrollContainer.removeEventListener("scroll", onPatientScroll);
+				scrollContainer = null;
+			}
+		};
+
+		const onPatientScroll = async (event) => {
+			const el = event.target;
+			if (el.scrollTop + el.clientHeight >= el.scrollHeight - 50) {
+				await patientsStore.loadMorePatients();
+			}
+		};
+
+		const attachScrollListener = () => {
+			const dropdown = patientDropdown.value?.$el?.querySelector(".v-overlay__content .v-list.v-select-list");
+			if (dropdown) {
+				scrollContainer = dropdown;
+				scrollContainer.addEventListener("scroll", onPatientScroll);
+			}
+		};
+
+		const onPatientMenuToggle = (isOpen) => {
+			isMenuOpen.value = isOpen;
+			if (isOpen) {
+				internalPatient.value = null;
+				nextTick(() => {
+					setTimeout(() => {
+						attachScrollListener();
+					}, 50);
+				});
+				return;
+			}
+
+			detachScrollListener();
+			if (tempSelectedPatient.value) {
+				internalPatient.value = tempSelectedPatient.value;
+				commitPatientChange(tempSelectedPatient.value);
+			} else if (selectedPatient.value) {
+				internalPatient.value = selectedPatient.value;
+			}
+			tempSelectedPatient.value = null;
+		};
+
+		const closePatientMenu = () => {
+			const dropdown = patientDropdown.value;
+			if (dropdown) {
+				try {
+					dropdown.menu = false;
+				} catch {
+					dropdown.$emit?.("update:menu", false);
+				}
+				const inputEl = dropdown.$el?.querySelector("input");
+				if (inputEl) {
+					inputEl.blur();
+				}
+			}
+			isMenuOpen.value = false;
+			detachScrollListener();
+		};
+
+		const onPatientChange = (val) => {
+			if (val && val === selectedPatient.value) {
+				internalPatient.value = selectedPatient.value;
+				return;
+			}
+
+			tempSelectedPatient.value = val;
+
+			if (isMenuOpen.value && val) {
+				closePatientMenu();
+			} else if (!isMenuOpen.value && val) {
+				commitPatientChange(val);
+			}
+		};
+
+		const commitPatientChange = (val) => {
+			emit("update:patient", val || null);
+			patientsStore.setSelectedPatient(val || null);
+			
+			if (val) {
+				const selected = filteredPatients.value.find((p) => p.name === val);
+				if (selected && selected.customer) {
+					customersStore.searchCustomers(selected.customer).then(() => {
+						customersStore.setSelectedCustomer(selected.customer);
+					});
+				} else if (selected) {
+					toastStore.show({
+						title: __("No customer linked to this patient"),
+						color: "warning",
+					});
+				}
+			} else {
+				customersStore.setSelectedCustomer(null);
+				patientsStore.setSelectedPatient(null);
+				patientsStore.setPatientInfo({});
+			}
+		};
+
+		const onPatientSearch = (value) => {
+			if (isPatientSearchLocked.value) {
+				return;
+			}
+			searchDebounce(value || "");
+		};
+
+		const handleEnter = (event) => {
+			const inputText = event.target.value?.toLowerCase() || "";
+			const matched = filteredPatients.value.find((p) => {
+				return (
+					p.patient_name?.toLowerCase().includes(inputText) ||
+					p.name?.toLowerCase().includes(inputText) ||
+					p.mobile?.includes(inputText)
+				);
 			});
-		} else if (selected) {
+
+			if (matched) {
+				tempSelectedPatient.value = matched.name;
+				internalPatient.value = matched.name;
+				commitPatientChange(matched.name);
+				closePatientMenu();
+				if (event?.target?.blur) event.target.blur();
+			} else {
+				emit("update:patient", null);
+			}
+		};
+
+		const reload_patients = async () => {
+			if (!networkOnline.value) {
+				toastStore.show({
+					title: __("Offline"),
+					text: __("Cannot reload patients while offline."),
+					color: "warning",
+				});
+				return;
+			}
+			await patientsStore.reloadPatients();
 			toastStore.show({
-				title: __("No customer linked to this patient"),
-				color: "warning",
+				title: __("Patients Reloaded"),
+				color: "success",
 			});
-		}
-	} else {
-		// Clear customer if patient is cleared
-		customersStore.searchCustomers("").then(() => {
-			customersStore.setSelectedCustomer("");
-		});
-	}
-};
+		};
 
-const onPatientMenuToggle = (isOpen) => {
-	isMenuOpen.value = isOpen;
-	if (isOpen) {
-		internalPatient.value = null;
-		
-		// Setup scroll listener for infinite scroll
-		nextTick(() => {
-			const listEl = document.querySelector('.v-overlay-container .v-list.v-select-list');
-			if (listEl) {
-				listEl.addEventListener('scroll', handlePatientScroll);
+		const edit_patient = () => {
+			patientsStore.openUpdatePatientDialog(patientInfo.value || {});
+		};
+
+		const new_patient = () => {
+			patientsStore.openUpdatePatientDialog(null);
+		};
+
+		const focusPatientSearch = async () => {
+			const dropdown = patientDropdown.value;
+			if (!dropdown) return;
+
+			try {
+				dropdown.menu = true;
+			} catch {
+				dropdown.$emit?.("update:menu", true);
+			}
+			isMenuOpen.value = true;
+
+			if (typeof dropdown.focus === "function") {
+				dropdown.focus();
+			}
+
+			await nextTick();
+			const inputEl = dropdown.$el?.querySelector("input");
+			if (inputEl) {
+				inputEl.focus();
+				inputEl.select?.();
+			}
+		};
+
+		const selectFirstPatient = () => {
+			if (!filteredPatients.value?.length) return;
+			const first = filteredPatients.value[0];
+			tempSelectedPatient.value = first.name;
+			internalPatient.value = first.name;
+			commitPatientChange(first.name);
+			closePatientMenu();
+		};
+
+		expose({ focusPatientSearch, selectFirstPatient });
+
+		onMounted(() => {
+			if (props.pos_profile) {
+				patientsStore.get_patient_names();
 			}
 		});
-	} else {
-		// Clean up scroll listener
-		const listEl = document.querySelector('.v-overlay-container .v-list.v-select-list');
-		if (listEl) {
-			listEl.removeEventListener('scroll', handlePatientScroll);
-		}
-		
-		if (tempSelectedPatient.value) {
-			internalPatient.value = tempSelectedPatient.value;
-			commitPatientChange(tempSelectedPatient.value);
-		}
-	}
+
+		onBeforeUnmount(() => {
+			searchDebounce.cancel();
+			detachScrollListener();
+		});
+
+		return {
+			patientDropdown,
+			filteredPatients,
+			loadingPatients,
+			isPatientBackgroundLoading,
+			isPatientSearchLocked,
+			patientLoadPercent,
+			patientFieldLabel,
+			patientFieldPlaceholder,
+			patientNoDataText,
+			internalPatient,
+			effectiveReadonly,
+			onPatientMenuToggle,
+			onPatientChange,
+			onPatientSearch,
+			handleEnter,
+			reload_patients,
+			edit_patient,
+			new_patient,
+			networkOnline,
+			focusPatientSearch,
+			selectFirstPatient,
+		};
+	},
 };
-
-const onPatientChange = (val) => {
-	tempSelectedPatient.value = val;
-
-	if (isMenuOpen.value && val) {
-		const dropdown = patientDropdown.value;
-		if (dropdown) dropdown.menu = false;
-		isMenuOpen.value = false;
-	} else if (!isMenuOpen.value && val) {
-		commitPatientChange(val);
-	}
-};
-
-let searchTimeout;
-const onPatientSearch = (value) => {
-	clearTimeout(searchTimeout);
-	searchTimeout = setTimeout(() => {
-		patientsStore.queueSearch(value || "");
-	}, 300);
-};
-
-const handleEnter = (event) => {
-	const inputText = event.target.value?.toLowerCase() || "";
-	const matched = filteredPatients.value.find((p) => {
-		return (
-			p.patient_name?.toLowerCase().includes(inputText) ||
-			p.name?.toLowerCase().includes(inputText) ||
-			p.mobile?.includes(inputText)
-		);
-	});
-
-	if (matched) {
-		internalPatient.value = matched.name;
-		onPatientChange(matched.name);
-		const dropdown = patientDropdown.value;
-		if (dropdown) dropdown.menu = false;
-		if (event?.target?.blur) event.target.blur();
-	} else {
-		emit("update:patient", null);
-	}
-};
-
-const handlePatientScroll = async (e) => {
-	const { scrollTop, clientHeight, scrollHeight } = e.target;
-	if (scrollHeight - scrollTop <= clientHeight + 100) {
-		await patientsStore.loadMorePatients();
-	}
-};
-
-onMounted(() => {
-	if (props.pos_profile) {
-		patientsStore.get_patient_names();
-	}
-});
-
-onUnmounted(() => {
-	clearTimeout(searchTimeout);
-	const listEl = document.querySelector('.v-overlay-container .v-list.v-select-list');
-	if (listEl) {
-		listEl.removeEventListener('scroll', handlePatientScroll);
-	}
-});
 </script>

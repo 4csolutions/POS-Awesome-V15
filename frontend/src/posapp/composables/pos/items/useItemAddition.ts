@@ -945,8 +945,17 @@ export function useItemAddition() {
 		// Reset price list to default
 		if (context.update_price_list) context.update_price_list();
 
-		// Always reset to default customer after invoice
-		context.customer = context.pos_profile.customer;
+		// Always reset to default customer and patient after invoice
+		const defaultCustomer = context.pos_profile?.customer || null;
+		context.customer = defaultCustomer;
+		if (context.customersStore?.setSelectedCustomer) {
+			context.customersStore.setSelectedCustomer(defaultCustomer);
+		}
+
+		if (context.patientsStore?.setSelectedPatient) {
+			context.patientsStore.setSelectedPatient(null);
+			context.patientsStore.setPatientInfo({});
+		}
 
 		context.eventBus.emit("set_customer_readonly", false);
 		context.invoiceType = wasReturn || wasQuotation

@@ -167,6 +167,10 @@ export async function cancel_invoice(context: any) {
 	if (context.customersStore?.setSelectedCustomer) {
 		context.customersStore.setSelectedCustomer(context.customer || null);
 	}
+	if (context.patientsStore?.setSelectedPatient) {
+		context.patientsStore.setSelectedPatient(null);
+		context.patientsStore.setPatientInfo({});
+	}
 	if (context.eventBus) {
 		context.eventBus.emit("focus_item_search");
 	}

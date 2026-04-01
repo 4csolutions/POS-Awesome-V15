@@ -191,6 +191,7 @@ export function get_invoice_doc(context: any) {
 	const customerChanged =
 		Boolean(previousCustomer && resolvedCustomer && previousCustomer !== resolvedCustomer);
 	doc.customer = resolvedCustomer;
+	doc.patient = context.patient || null;
 	if (customerChanged) {
 		doc.customer_name = matchingCustomerDetails.customer_name || resolvedCustomer;
 	}

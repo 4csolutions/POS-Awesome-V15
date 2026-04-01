@@ -624,10 +624,6 @@ export const usePatientsStore = defineStore("patients", () => {
 		setPatientsLastSync(null);
 
 		await get_patient_names();
-
-		if (posProfile.value && posProfile.value.patient) {
-			setSelectedPatient(posProfile.value.patient);
-		}
 	}
 
 	function openUpdatePatientDialog(patient: Patient | null = null) {

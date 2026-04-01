@@ -243,6 +243,16 @@ export async function load_invoice(
 	}
 
 	context.customer = data.customer;
+	context.patient = data.patient;
+
+	if (context.customersStore?.setSelectedCustomer) {
+		context.customersStore.setSelectedCustomer(data.customer || null);
+	}
+
+	if (context.patientsStore?.setSelectedPatient) {
+		context.patientsStore.setSelectedPatient(data.patient || null);
+	}
+
 	if (context.set_delivery_charges) await context.set_delivery_charges();
 
 	context.posting_date = context.formatDateForBackend
