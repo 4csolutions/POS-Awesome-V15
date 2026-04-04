@@ -636,6 +636,13 @@ export const usePatientsStore = defineStore("patients", () => {
 		patientToUpdate.value = null;
 	}
 
+	async function findPatientByCustomer(customerName: string) {
+		if (!customerName) return null;
+		await ensureDatabase();
+		const patient = await db.table("patients").filter(p => p.customer === customerName).first();
+		return patient || null;
+	}
+
 	function clearLocalState() {
 		resetPagination();
 		selectedPatient.value = null;
@@ -679,6 +686,7 @@ export const usePatientsStore = defineStore("patients", () => {
 		addOrUpdatePatient,
 		requestPatientRefresh,
 		reloadPatients,
+		findPatientByCustomer,
 		clearLocalState,
 		isUpdatePatientDialogOpen,
 		patientToUpdate,

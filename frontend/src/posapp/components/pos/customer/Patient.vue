@@ -356,6 +356,9 @@ export default {
 			
 			if (val) {
 				const selected = filteredPatients.value.find((p) => p.name === val);
+				if (selected) {
+					patientsStore.setPatientInfo(selected);
+				}
 				if (selected && selected.customer) {
 					customersStore.searchCustomers(selected.customer).then(() => {
 						customersStore.setSelectedCustomer(selected.customer);

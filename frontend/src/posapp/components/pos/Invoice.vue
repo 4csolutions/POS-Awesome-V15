@@ -361,7 +361,6 @@ export default {
 			stock_settings: "",
 			return_doc: "",
 			customer: "",
-			patient: null,
 			customer_info: "",
 			customer_balance: 0,
 			total_tax: 0,
@@ -434,6 +433,9 @@ export default {
 			set(value) {
 				this.invoiceStore.setPackedItems(value);
 			},
+		},
+		patient() {
+			return this.patientsStore?.selectedPatient || null;
 		},
 		paymentVisible() {
 			return this.activeView === "payment" || this.uiStore.paymentDialogOpen;

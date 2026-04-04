@@ -1,5 +1,6 @@
 import { clearPriceListCache } from "../../../../offline/index";
 import { useCustomersStore } from "../../../stores/customersStore.js";
+import { usePatientsStore } from "../../../stores/patientsStore.js";
 
 interface WatcherItem {
 	posa_row_id?: string | number;
@@ -116,6 +117,33 @@ const invoiceWatchers: Record<string, unknown> & ThisType<InvoiceWatchersVm> = {
 		}
 		this.set_delivery_charges();
 		this.sync_invoice_customer_details();
+
+		// Auto-select or clear patient based on customer change
+		const patientsStore = usePatientsStore();
+		const currentPatientInfo = patientsStore.patientInfo;
+
+		if (newValue) {
+			// If we already have a patient selected for this customer, do nothing
+			if (currentPatientInfo && currentPatientInfo.customer === newValue) {
+				return;
+			}
+
+			// Try to find a patient linked to the new customer
+			patientsStore.findPatientByCustomer(newValue as string).then((patient) => {
+				if (patient) {
+					patientsStore.setSelectedPatient(patient.name);
+					patientsStore.setPatientInfo(patient);
+				} else {
+					// No patient found for this customer, clear selection
+					patientsStore.setSelectedPatient(null);
+					patientsStore.setPatientInfo({});
+				}
+			});
+		} else {
+			// Customer cleared, clear patient too
+			patientsStore.setSelectedPatient(null);
+			patientsStore.setPatientInfo({});
+		}
 	},
 	// Watch for customer_info change and emit to edit form
 	customer_info() {
