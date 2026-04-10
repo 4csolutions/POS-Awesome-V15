@@ -453,6 +453,9 @@ def update_invoice(data):
 
     return_validity_enabled, default_validity_days = _get_return_validity_settings(pos_profile)
 
+    if data.get("posting_date"):
+        data["set_posting_time"] = 1
+
     invoice_doc = _get_mutable_invoice_doc(data, doctype)
 
     # Set currency from data before set_missing_values
@@ -693,6 +696,8 @@ def submit_invoice(invoice, data, submit_in_background=False):
         # Prevent TimestampMismatchError by relying on server-side timestamp
         if "modified" in invoice:
             del invoice["modified"]
+        if invoice.get("posting_date"):
+            invoice["set_posting_time"] = 1
         invoice_doc = frappe.get_doc(doctype, invoice_name)
         invoice_doc.update(invoice)
 
