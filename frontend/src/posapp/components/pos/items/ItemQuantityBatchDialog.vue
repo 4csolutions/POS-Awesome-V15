@@ -156,7 +156,7 @@ const internalModelValue = computed({
 const batches = computed(() => {
 	if (!props.item?.has_batch_no) return [];
 	// Use shared logic to calculate availability
-	return sharedBatchSerial.getBatchAvailability(props.item, props.context);
+	return sharedBatchSerial.getBatchAvailability(props.item, props.context).filter(b => b.available_qty > 0);
 });
 
 const resetForm = () => {
