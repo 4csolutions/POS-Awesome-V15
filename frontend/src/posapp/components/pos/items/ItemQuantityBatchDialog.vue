@@ -63,7 +63,7 @@
 										</v-list-item-title>
 										<v-list-item-subtitle class="d-flex ga-4">
 											<span v-if="batchItem.raw.expiry_date" :class="{ 'text-error': batchItem.raw.is_expired }">
-												{{ __("Exp") }}: {{ formatDate(batchItem.raw.expiry_date) }}
+												{{ __("Exp") }}: {{ formatDateDisplay(batchItem.raw.expiry_date) }}
 											</span>
 											<span>{{ __("Qty") }}: {{ batchItem.raw.available_qty }}</span>
 										</v-list-item-subtitle>
@@ -138,6 +138,15 @@ const emit = defineEmits(["update:modelValue", "submit"]);
 
 const __ = (window).__( (text) => text );
 const sharedBatchSerial = useBatchSerial();
+
+const formatDateDisplay = (date) => {
+	if (!date) return "";
+	const parts = String(date).split("-");
+	if (parts.length === 3) {
+		return `${parts[2]}-${parts[1]}-${parts[0]}`;
+	}
+	return date;
+};
 
 const loading = ref(false);
 const formRef = ref(null);

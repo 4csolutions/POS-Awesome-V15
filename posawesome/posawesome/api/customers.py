@@ -55,7 +55,7 @@ def get_customer_group_condition(pos_profile):
 
 
 @frappe.whitelist()
-def get_customer_balance(customer):
+def get_customer_balance(customer, company=None):
     if not customer:
         return {"balance": 0, "customer_name": None}
 
@@ -63,15 +63,18 @@ def get_customer_balance(customer):
         customer_doc = frappe.get_doc("Customer", customer)
         customer_name = customer_doc.customer_name
 
-        balance = frappe.db.sql(
-            """
+        query = """
             SELECT SUM(debit - credit) AS balance
             FROM `tabGL Entry`
             WHERE party_type = 'Customer' AND party = %s AND docstatus = 1
-        """,
-            (customer,),
-            as_dict=True,
-        )
+        """
+        params = [customer]
+
+        if company:
+            query += " AND company = %s"
+            params.append(company)
+
+        balance = frappe.db.sql(query, tuple(params), as_dict=True)
 
         return {
             "balance": flt(balance[0].get("balance", 0)) if balance else 0,
