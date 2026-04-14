@@ -63,7 +63,7 @@
 										</v-list-item-title>
 										<v-list-item-subtitle class="d-flex ga-4">
 											<span v-if="batchItem.raw.expiry_date" :class="{ 'text-error': batchItem.raw.is_expired }">
-												{{ __("Exp") }}: {{ batchItem.raw.expiry_date }}
+												{{ __("Exp") }}: {{ formatDate(batchItem.raw.expiry_date) }}
 											</span>
 											<span>{{ __("Qty") }}: {{ batchItem.raw.available_qty }}</span>
 										</v-list-item-subtitle>
@@ -156,7 +156,7 @@ const internalModelValue = computed({
 const batches = computed(() => {
 	if (!props.item?.has_batch_no) return [];
 	// Use shared logic to calculate availability
-	return sharedBatchSerial.getBatchAvailability(props.item, props.context);
+	return sharedBatchSerial.getBatchAvailability(props.item, props.context).filter(b => b.available_qty > 0);
 });
 
 const resetForm = () => {
