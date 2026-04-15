@@ -439,7 +439,6 @@ export function useItemAddition() {
 				);
 				const shouldAllocateAcrossBatches =
 					new_item.has_batch_no &&
-					!new_item.batch_no &&
 					(shouldAutoSetBatch(context, new_item) ||
 						requestedQtyForBatching > 1);
 
@@ -453,6 +452,19 @@ export function useItemAddition() {
 					const usable_batches = batches.filter(
 						(b) => b.available_qty > 0,
 					);
+
+					if (new_item.batch_no) {
+						const selectedBatchIdx = usable_batches.findIndex(
+							(b) => b.batch_no === new_item.batch_no,
+						);
+						if (selectedBatchIdx > -1) {
+							const [selected] = usable_batches.splice(
+								selectedBatchIdx,
+								1,
+							);
+							usable_batches.unshift(selected);
+						}
+					}
 
 					// Standard Case: If no usable batches or only one needed/available
 					if (usable_batches.length === 0) {
@@ -484,26 +496,15 @@ export function useItemAddition() {
 							remaining_qty,
 						});
 
-						// If we still have remainder but ran out of batches, add it to the last allocation
+						// If we still have remainder but ran out of batches, we cap it (as per requirement)
 						if (remaining_qty > 0) {
-							if (allocations.length > 0) {
-								const lastAllocation =
-									allocations[allocations.length - 1];
-								if (lastAllocation) {
-									lastAllocation.qty += remaining_qty;
-									logBatchFlow(
-										"Insufficient batch availability, keeping remainder on last allocation",
-										{
-											item_code: new_item.item_code,
-											remainder: remaining_qty,
-											last_batch: lastAllocation.batch,
-										},
-									);
-								}
-							} else {
-								// No usable batches found? Just use standard logic
-								callSetBatchQty(context, new_item, null, false);
-							}
+							logBatchFlow(
+								"Insufficient batch availability, capping quantity at available total",
+								{
+									item_code: new_item.item_code,
+									remainder: remaining_qty,
+								},
+							);
 						}
 
 						if (allocations.length > 0) {
@@ -545,6 +546,10 @@ export function useItemAddition() {
 
 								extra_items.push(split_item);
 							}
+						} else {
+							// No usable batches found? cap to 0
+							new_item.qty = 0;
+							callSetBatchQty(context, new_item, null, false);
 						}
 					}
 				} else if (shouldAutoSetBatch(context, new_item)) {
