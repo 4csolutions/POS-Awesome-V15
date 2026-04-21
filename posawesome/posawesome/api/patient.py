@@ -106,6 +106,13 @@ def get_patient_medications(patient, pos_profile, encounter=None):
         "is_pos": 1
     })
 
+    from posawesome.posawesome.api.item_fetchers import ItemDetailAggregator
+
+    aggregator = ItemDetailAggregator(profile_dict, price_list=price_list, customer=customer)
+    # Prepare items for aggregator
+    agg_items = [{"item_code": r["item_code"]} for r in item_rows]
+    enrichment_map = {d["item_code"]: d for d in aggregator.build_details(agg_items)}
+
     final_cart_items = []
     
     for row in item_rows:
@@ -113,23 +120,32 @@ def get_patient_medications(patient, pos_profile, encounter=None):
         qty = flt(row.get("qty"))
         medication = row.get("medication")
         
-        args = frappe._dict({
-            "item_code": item_code,
-            "company": company,
-            "customer": customer,
-            "price_list": price_list,
-            "currency": currency,
-            "doctype": "Sales Invoice",
-            "name": None,
-            "qty": qty,
-            "is_pos": 1,
-            "pos_profile": pos_profile,
-            "warehouse": warehouse
-        })
-        
         try:
-            item_details = get_item_details(args, doc, for_validate=True)
+            # Get enriched details (batches, uoms, etc.)
+            item_details = enrichment_map.get(item_code)
             
+            if not item_details:
+                # Fallback (old logic simplified)
+                med_name = medication or item_code
+                dosage_str = row.get("dosage")
+                period_str = row.get("period")
+                desc = f"{dosage_str} for {period_str}" if (dosage_str and period_str) else (dosage_str or f"(Medication Request: {row.get('reference_dn')})")
+                
+                cart_item = {
+                    "item_code": item_code,
+                    "qty": qty,
+                    "rate": 0,
+                    "amount": 0,
+                    "description": desc,
+                    "reference_dt": "Medication Request",
+                    "reference_dn": row.get("reference_dn"),
+                    "posa_row_id": frappe.generate_hash(length=12),
+                    "has_batch_no": 0,
+                    "batch_no_data": []
+                }
+                final_cart_items.append(cart_item)
+                continue
+
             # Check if there is an explicit rate in the Medication Linked Item table
             explicit_rate = None
             if medication:
@@ -141,11 +157,9 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 rate = (
                     flt(item_details.get("price_list_rate")) or 
                     flt(item_details.get("base_price_list_rate")) or
-                    flt(item_details.get("standard_rate")) or
                     flt(item_details.get("rate", 0))
                 )
             
-            med_name = medication or item_details.get("item_name") or item_code
             dosage_str = row.get("dosage")
             period_str = row.get("period")
 
@@ -163,7 +177,7 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 "item_name": item_details.get("item_name"),
                 "description": desc,
                 "qty": qty,
-                "uom": item_details.get("uom"),
+                "uom": item_details.get("uom") or item_details.get("stock_uom"),
                 "stock_uom": item_details.get("stock_uom"),
                 "conversion_factor": item_details.get("conversion_factor", 1.0),
                 "rate": rate,
@@ -179,9 +193,9 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 "allow_negative_stock": item_details.get("allow_negative_stock", 0),
 
                 # POS Awesome expects item_uoms to be at least a list
-                "item_uoms": [{"uom": item_details.get("uom"), "conversion_factor": 1}],
-                "batch_no_data": [],
-                "serial_no_data": [],
+                "item_uoms": item_details.get("item_uoms") or [{"uom": item_details.get("uom"), "conversion_factor": 1}],
+                "batch_no_data": item_details.get("batch_no_data") or [],
+                "serial_no_data": item_details.get("serial_no_data") or [],
                 
                 # Reference
                 "reference_dt": "Medication Request",
@@ -193,6 +207,7 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 "discount_percentage": item_details.get("discount_percentage", 0),
             }
             final_cart_items.append(cart_item)
+
         except Exception as e:
             frappe.log_error(f"Error fetching item details for {item_code}: {e}", "Medication Fetch Error")
             # Fallback to explicit or 0 rate
@@ -202,7 +217,6 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 if explicit_rate:
                     fallback_rate = explicit_rate
 
-            med_name = medication or item_code
             dosage_str = row.get("dosage")
             period_str = row.get("period")
 
