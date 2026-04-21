@@ -1,6 +1,6 @@
 <template>
 	<v-row dense>
-		<v-col cols="12" sm="6">
+		<v-col cols="12" sm="6" v-if="false">
 			<v-btn
 				block
 				color="accent"
@@ -9,11 +9,12 @@
 				@click="$emit('save-and-clear')"
 				class="summary-btn"
 				:loading="saveLoading"
+				disabled
 			>
 				{{ __("Save & Clear") }}
 			</v-btn>
 		</v-col>
-		<v-col cols="12" sm="6">
+		<v-col cols="12" sm="6" v-if="false">
 			<v-btn
 				block
 				color="warning"
@@ -22,6 +23,7 @@
 				@click="$emit('load-drafts')"
 				class="white-text-btn summary-btn"
 				:loading="loadDraftsLoading"
+				disabled
 			>
 				{{ __("Load Drafts") }}
 			</v-btn>
