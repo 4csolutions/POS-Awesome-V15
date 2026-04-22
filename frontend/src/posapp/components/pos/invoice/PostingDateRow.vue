@@ -32,7 +32,12 @@
 			/>
 			<div v-if="pos_profile.posa_show_customer_balance" class="balance-field ml-3">
 				<strong>{{ __("Customer Balance") }}:</strong>
-				<span class="balance-value">{{ formatCurrency(customer_balance) }}</span>
+				<span
+					class="balance-value"
+					:style="{ color: customer_balance > 0 ? '#ef4444' : '#10b981' }"
+				>
+					{{ formatCurrency(customer_balance) }}
+				</span>
 			</div>
 		</v-col>
 		<v-col
@@ -42,8 +47,12 @@
 			class="pb-2 d-flex align-center posting-meta-col"
 		>
 			<div class="balance-field">
-				<strong>{{ __("Customer Balance") }}:</strong>
-				<span class="balance-value">{{ formatCurrency(customer_balance) }}</span>
+				<span
+					class="balance-value"
+					:style="{ color: customer_balance > 0 ? '#ef4444' : '#10b981' }"
+				>
+					{{ formatCurrency(customer_balance) }}
+				</span>
 			</div>
 		</v-col>
 	</v-row>
@@ -62,7 +71,12 @@ interface Props {
 	priceLists?: string[];
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	posting_date_display: "",
+	customer_balance: 0,
+	priceList: "",
+	priceLists: () => [],
+});
 
 const __ = (str: string) => (window.__ ? window.__(str) : str);
 

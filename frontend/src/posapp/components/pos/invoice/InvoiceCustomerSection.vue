@@ -20,13 +20,6 @@
 					Fetch Medication
 				</v-btn>
 			</div>
-
-			<FetchMedicationsDialog
-				v-model="showMedicationsDialog"
-				:patientId="patientId"
-				:posProfile="props.pos_profile"
-				@add-medications="handleAddMedications"
-			/>
 		</v-col>
 		<!-- Invoice Type Selection (Only shown if sales orders are allowed) -->
 		<v-col v-if="pos_profile.posa_allow_sales_order" cols="3" class="pb-4">
@@ -43,6 +36,13 @@
 				:disabled="modelValue == 'Return'"
 			></v-select>
 		</v-col>
+
+		<FetchMedicationsDialog
+			v-model="showMedicationsDialog"
+			:patientId="patientId"
+			:posProfile="props.pos_profile"
+			@add-medications="handleAddMedications"
+		/>
 	</v-row>
 </template>
 
