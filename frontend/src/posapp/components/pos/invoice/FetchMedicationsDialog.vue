@@ -149,15 +149,9 @@ const fetchEncounters = async () => {
 	try {
         // Fetch Patient Encounters
 		const response = await frappe.call({
-			method: "frappe.client.get_list",
+			method: "posawesome.posawesome.api.patient.get_pending_medication_encounters",
 			args: {
-				doctype: "Patient Encounter",
-				filters: {
-					patient: props.patientId,
-					docstatus: 1
-				},
-				fields: ["name", "title", "encounter_date", "encounter_time", "practitioner_name", "creation"],
-                order_by: "creation desc"
+				patient: props.patientId
 			}
 		});
 		
@@ -244,6 +238,7 @@ const submit = () => {
     // Return selected items, updating their quantities from the table
 	const selectedRows = fetchedMedications.value.filter((m) => selected.value.includes(m.posa_row_id));
 	const finalItems = [];
+	let skippedCount = 0;
 
 	selectedRows.forEach(row => {
 		if (row.qty <= 0) return;
@@ -251,8 +246,7 @@ const submit = () => {
 		if (row.has_batch_no) {
 			const batches = getSortedBatches(row);
 			if (batches.length === 0) {
-				// No batches? Add as is (back-end will handle/error if enforced)
-				finalItems.push({ ...row });
+				skippedCount++;
 				return;
 			}
 
@@ -301,6 +295,13 @@ const submit = () => {
 
 	if (finalItems.length > 0) {
 		emit("add-medications", finalItems);
+	}
+
+	if (skippedCount > 0) {
+		toastStore.show({
+			title: `${skippedCount} ${frappe._('item(s) skipped due to zero available stock.')}`,
+			color: "warning",
+		});
 	}
 	dialog.value = false;
 };

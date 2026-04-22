@@ -304,6 +304,36 @@ def get_patient_names(pos_profile, limit=None, offset=None, start_after=None, mo
 
 
 @frappe.whitelist()
+def get_pending_medication_encounters(patient):
+    """
+    Fetch Patient Encounters that have at least one submitted Medication Request 
+    that is not yet fully invoiced.
+    """
+    if not patient:
+        return []
+
+    # Find unique order_groups from Medication Request with pending billing
+    encounters = frappe.db.sql("""
+        SELECT DISTINCT
+            pe.name,
+            pe.encounter_date,
+            pe.practitioner_name,
+            pe.creation
+        FROM `tabPatient Encounter` pe
+        JOIN `tabMedication Request` mr ON mr.order_group = pe.name
+        WHERE
+            pe.patient = %s
+            AND pe.docstatus = 1
+            AND mr.docstatus = 1
+            AND mr.billing_status != 'Invoiced'
+            AND mr.status NOT IN ('completed-Medication Request Status', 'cancelled-Medication Request Status', 'stopped-Medication Request Status', 'entered-in-error-Medication Request Status')
+        ORDER BY pe.creation DESC
+    """, (patient,), as_dict=True)
+
+    return encounters
+
+
+@frappe.whitelist()
 def get_patients_count(pos_profile):
     filters = {"status": ["!=", "Disabled"]}
     return frappe.db.count("Patient", filters)
