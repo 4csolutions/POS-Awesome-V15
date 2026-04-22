@@ -29,6 +29,13 @@ from posawesome.posawesome.api.invoice_processing.stock import (
 from posawesome.posawesome.api.payment_processing.utils import get_bank_cash_account as get_bank_account
 from posawesome.posawesome.api.utilities import ensure_child_doctype, set_batch_nos_for_bundels
 from posawesome.posawesome.api.payments import redeeming_customer_credit
+from posawesome.posawesome.api.idempotency import (
+    extract_invoice_client_request_id,
+    find_invoice_by_client_request_id,
+    set_invoice_client_request_id,
+    strip_invoice_client_request_id,
+    doctype_supports_client_request_id,
+)
 import json
 from frappe.utils import money_in_words
 from frappe.utils.background_jobs import enqueue
@@ -39,6 +46,15 @@ def _has_post_submit_payment_work(data):
         flt((data or {}).get("redeemed_customer_credit"))
         or flt((data or {}).get("paid_change"))
         or flt((data or {}).get("credit_change"))
+    )
+
+
+def _apply_invoice_gift_card_settlement(invoice_doc, data):
+    from posawesome.posawesome.api.gift_cards import apply_invoice_gift_card_redemptions
+
+    apply_invoice_gift_card_redemptions(
+        invoice_doc,
+        (data or {}).get("gift_card_redemptions") or [],
     )
 
 
@@ -261,6 +277,23 @@ def _sanitize_delivery_dates(payload):
             item["posa_delivery_date"] = _safe_date_string(item.get("posa_delivery_date"))
 
 
+def _apply_manual_posting_controls(payload):
+    if not isinstance(payload, dict):
+        return
+
+    posting_date = _safe_date_string(payload.get("posting_date"))
+    if posting_date:
+        payload["posting_date"] = posting_date
+
+    if cint(payload.get("set_posting_time")):
+        payload["set_posting_time"] = 1
+        return
+
+    today = _safe_date_string(nowdate())
+    if posting_date and today and posting_date != today:
+        payload["set_posting_time"] = 1
+
+
 def _build_fresh_invoice_payload(data, doctype):
     fresh_data = dict(data or {})
     fresh_data["doctype"] = doctype
@@ -438,7 +471,11 @@ def _resolve_payment_amounts(payment, conversion_rate=1):
 def update_invoice(data):
     currency_cache = {}
     data = json.loads(data)
+    client_request_id = extract_invoice_client_request_id(data)
+    if not doctype_supports_client_request_id(data.get("doctype") or "Sales Invoice"):
+        strip_invoice_client_request_id(data)
     _sanitize_delivery_dates(data)
+    _apply_manual_posting_controls(data)
     _strip_client_freebies_from_payload(data)
     # Determine doctype based on POS Profile setting
     pos_profile = data.get("pos_profile")
@@ -457,6 +494,7 @@ def update_invoice(data):
         data["set_posting_time"] = 1
 
     invoice_doc = _get_mutable_invoice_doc(data, doctype)
+    set_invoice_client_request_id(invoice_doc, client_request_id)
 
     # Set currency from data before set_missing_values
     # Validate return items if this is a return invoice
@@ -671,7 +709,9 @@ def update_invoice(data):
 def submit_invoice(invoice, data, submit_in_background=False):
     data = json.loads(data)
     invoice = json.loads(invoice)
+    client_request_id = extract_invoice_client_request_id(invoice, data)
     _sanitize_delivery_dates(invoice)
+    _apply_manual_posting_controls(invoice)
     submit_in_background = cint(submit_in_background)
     _strip_client_freebies_from_payload(invoice)
     pos_profile = invoice.get("pos_profile")
@@ -681,6 +721,22 @@ def submit_invoice(invoice, data, submit_in_background=False):
     ):
         doctype = "POS Invoice"
 
+    if not doctype_supports_client_request_id(doctype):
+        strip_invoice_client_request_id(invoice)
+
+    existing_by_request = find_invoice_by_client_request_id(client_request_id, preferred_doctype=doctype)
+    if existing_by_request:
+        if cint(existing_by_request.docstatus) == 1:
+            return {
+                "name": existing_by_request.name,
+                "status": existing_by_request.docstatus,
+                "docstatus": existing_by_request.docstatus,
+                "doctype": existing_by_request.doctype,
+                "replayed": True,
+            }
+        invoice["name"] = existing_by_request.name
+        doctype = existing_by_request.doctype
+
     invoice_name = invoice.get("name")
     if invoice_name and frappe.db.exists(doctype, invoice_name):
         existing_doc = frappe.get_doc(doctype, invoice_name)
@@ -689,6 +745,8 @@ def submit_invoice(invoice, data, submit_in_background=False):
             invoice_name = None
 
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
+        if client_request_id:
+            invoice["posa_client_request_id"] = client_request_id
         created = update_invoice(json.dumps(invoice))
         invoice_name = created.get("name")
         invoice_doc = frappe.get_doc(doctype, invoice_name)
@@ -700,6 +758,8 @@ def submit_invoice(invoice, data, submit_in_background=False):
             invoice["set_posting_time"] = 1
         invoice_doc = frappe.get_doc(doctype, invoice_name)
         invoice_doc.update(invoice)
+
+    set_invoice_client_request_id(invoice_doc, client_request_id)
 
     _deduplicate_free_items(invoice_doc)
 
@@ -741,6 +801,7 @@ def submit_invoice(invoice, data, submit_in_background=False):
         invoice_total = flt(invoice_doc.rounded_total or invoice_doc.grand_total)
         settled_without_cash = (
             flt(data.get("redeemed_customer_credit"))
+            + sum(flt(row.get("amount")) for row in (data.get("gift_card_redemptions") or []))
             + flt(invoice_doc.get("loyalty_amount"))
             + flt(invoice_doc.get("write_off_amount"))
         )
@@ -774,7 +835,13 @@ def submit_invoice(invoice, data, submit_in_background=False):
                 invoice_doc.is_pos = 0
                 is_payment_entry = 1
 
-    payments = invoice_doc.payments
+    _apply_invoice_gift_card_settlement(invoice_doc, data)
+
+    payments = [
+        row
+        for row in (invoice_doc.payments or [])
+        if str(row.get("mode_of_payment") or "").strip() != "Gift Card"
+    ]
 
     _auto_set_return_batches(invoice_doc)
 
@@ -880,6 +947,8 @@ def submit_in_background_job(kwargs):
 
             if not invoice_doc.loyalty_redemption_cost_center:
                 invoice_doc.loyalty_redemption_cost_center = invoice_doc.cost_center
+
+        _apply_invoice_gift_card_settlement(invoice_doc, data)
 
         invoice_doc = _save_draft_with_latest_timestamp(invoice_doc)
 

@@ -59,7 +59,7 @@
 
 				<!-- Add icon (right) -->
 				<template #append-inner>
-					<span v-if="isCustomerSearchLocked" class="customer-load-percent">
+					<span v-if="showCustomerLoadProgress" class="customer-load-percent">
 						{{ customerLoadPercent }}%
 					</span>
 					<v-tooltip :text="__('Add new customer')" content-class="posa-theme-tooltip">
@@ -98,7 +98,7 @@
 				</template>
 			</v-autocomplete>
 			<v-progress-linear
-				v-if="isCustomerSearchLocked"
+				v-if="showCustomerLoadProgress"
 				:model-value="customerLoadPercent"
 				height="4"
 				color="primary"
@@ -106,7 +106,6 @@
 				rounded
 			/>
 		</div>
-
 		<!-- Update customer modal -->
 		<div class="mt-4">
 			<UpdateCustomer />
@@ -247,27 +246,38 @@ export default {
 		const { isOnline: networkOnline } = useOnlineStatus();
 
 		const effectiveReadonly = computed(() => readonlyState.value && networkOnline.value);
-		const isCustomerSearchLocked = computed(
+		const showCustomerLoadProgress = computed(
 			() => loadingCustomers.value || isCustomerBackgroundLoading.value,
+		);
+		const isCustomerSearchLocked = computed(
+			() => loadingCustomers.value && customers.value.length === 0,
 		);
 		const customerLoadPercent = computed(() =>
 			Math.max(0, Math.min(100, Math.round(loadProgress.value || 0))),
 		);
 		const customerFieldLabel = computed(() =>
-			isCustomerSearchLocked.value
+			showCustomerLoadProgress.value
 				? `${frappe._("Loading customers")} ${customerLoadPercent.value}%`
 				: frappe._("Customer"),
 		);
 		const customerFieldPlaceholder = computed(() =>
-			isCustomerSearchLocked.value
+			showCustomerLoadProgress.value
 				? `${__("Loading customers...")} ${customerLoadPercent.value}%`
 				: __("Search customer"),
 		);
 		const customerNoDataText = computed(() =>
-			isCustomerSearchLocked.value
+			showCustomerLoadProgress.value
 				? `${__("Loading customers...")} ${customerLoadPercent.value}%`
 				: __("Customers not found"),
 		);
+
+		const formatCustomerMetric = (value) => {
+			const numericValue = Number(value || 0);
+			return new Intl.NumberFormat(undefined, {
+				minimumFractionDigits: 0,
+				maximumFractionDigits: 2,
+			}).format(numericValue);
+		};
 
 		const searchDebounce = _.debounce((term) => {
 			customersStore.queueSearch(term || "");
@@ -522,6 +532,7 @@ export default {
 			filteredCustomers,
 			loadingCustomers,
 			isCustomerBackgroundLoading,
+			showCustomerLoadProgress,
 			isCustomerSearchLocked,
 			customerLoadPercent,
 			customerFieldLabel,
@@ -540,6 +551,8 @@ export default {
 			focusCustomerSearch,
 			reload_customers,
 			networkOnline,
+			customerInfo,
+			formatCustomerMetric,
 		};
 	},
 };

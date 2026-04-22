@@ -7,6 +7,7 @@ import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import type { Item, POSProfile } from "../types/models";
 import itemService from "../services/itemService";
+import { refreshBootstrapSnapshotFromCacheState } from "../../offline/index";
 
 // Composables
 import { useItemsCache } from "../composables/pos/items/store/useItemsCache";
@@ -87,6 +88,12 @@ export const useItemsStore = defineStore("items", () => {
 		return await fn(priceList);
 	};
 
+	const syncBootstrapItemReadiness = (count: number | boolean) => {
+		refreshBootstrapSnapshotFromCacheState({
+			itemsCount: count,
+		});
+	};
+
 	// Core State
 	const items = ref<Item[]>([]);
 	const filteredItems = ref<Item[]>([]);
@@ -136,7 +143,7 @@ export const useItemsStore = defineStore("items", () => {
 		itemGroups,
 		loadItemGroups,
 		persistItemsToStorage,
-		backgroundLoadItemDetails,
+		primeItemDetailsCache,
 		cancelBackgroundSync,
 		refreshModifiedItems: syncRefreshModifiedItems,
 		backgroundSyncItems: syncBackgroundSyncItems,
@@ -356,6 +363,7 @@ export const useItemsStore = defineStore("items", () => {
 				resetCachedPagination({ enabled: false, total: 0 });
 				setItems([], { totalCount: 0 });
 				itemsLoaded.value = false;
+				syncBootstrapItemReadiness(0);
 				return;
 			}
 
@@ -371,6 +379,7 @@ export const useItemsStore = defineStore("items", () => {
 			if (resolvedCount === 0) {
 				itemsLoaded.value = false;
 				resetCachedPagination();
+				syncBootstrapItemReadiness(0);
 				return;
 			}
 
@@ -388,6 +397,7 @@ export const useItemsStore = defineStore("items", () => {
 					setItems(cachedItems, { totalCount: resolvedCount });
 					cachedPagination.value.offset = cachedItems.length;
 					itemsLoaded.value = true;
+					syncBootstrapItemReadiness(resolvedCount);
 				}
 				return;
 			}
@@ -410,6 +420,7 @@ export const useItemsStore = defineStore("items", () => {
 					? itemGroup.value
 					: "ALL";
 			itemsLoaded.value = true;
+			syncBootstrapItemReadiness(resolvedCount);
 		} catch (error) {
 			console.warn("Failed to load cached items:", error);
 			itemsLoaded.value = true;
@@ -524,6 +535,11 @@ export const useItemsStore = defineStore("items", () => {
 								},
 							);
 						}
+						if (normalizedGroup === "ALL") {
+							syncBootstrapItemReadiness(
+								Math.max(Number(storedCount || 0), cachedResult.length),
+							);
+						}
 					}
 					performanceMetrics.value.cachedRequests++;
 					updatePerformanceMetrics(startTime);
@@ -539,6 +555,7 @@ export const useItemsStore = defineStore("items", () => {
 				return [];
 			}
 			const requestProfile = JSON.parse(JSON.stringify(posProfile.value));
+			const effectivePriceList = priceList || activePriceList.value;
 			if (forceServer) {
 				requestProfile.posa_use_server_cache = 0;
 				requestProfile.posa_force_reload_items = 1;
@@ -546,7 +563,7 @@ export const useItemsStore = defineStore("items", () => {
 
 			const args: any = {
 				pos_profile: JSON.stringify(requestProfile),
-				price_list: priceList || activePriceList.value,
+				price_list: effectivePriceList,
 				item_group:
 					normalizedGroup !== "ALL"
 						? normalizedGroup.toLowerCase()
@@ -600,19 +617,31 @@ export const useItemsStore = defineStore("items", () => {
 						);
 					},
 				);
+				if (normalizedGroup === "ALL") {
+					const storedCount = await getStoredItemsCountByScopeCompat(
+						getStorageScope(),
+					).catch(() => fetchedItems.length);
+					syncBootstrapItemReadiness(
+						Math.max(Number(storedCount || 0), fetchedItems.length),
+					);
+				}
 				triggerBackgroundSync({
 					groupFilter: normalizedGroup,
 					initialBatch: fetchedItems,
 					reset: false,
 				});
+			} else if (!searchValue && normalizedGroup === "ALL") {
+				syncBootstrapItemReadiness(0);
 			}
 
 			if (fetchedItems.length > 0) {
-				backgroundLoadItemDetails(
+				// `get_items` already returns detail-enriched rows. Seed the offline
+				// detail cache from that response and keep the visible-item refresh path
+				// as the single place that decides whether a live recheck is still needed.
+				primeItemDetailsCache(
 					fetchedItems,
 					posProfile.value,
-					activePriceList.value,
-					getItemByCode,
+					effectivePriceList,
 				);
 			}
 
@@ -853,13 +882,6 @@ export const useItemsStore = defineStore("items", () => {
 			if (safePage.length < cachedPagination.value.pageSize) {
 				cachedPagination.value.offset = cachedPagination.value.total;
 			}
-
-			backgroundLoadItemDetails(
-				safePage,
-				posProfile.value,
-				activePriceList.value,
-				getItemByCode,
-			);
 
 			return safePage;
 		} catch (error) {

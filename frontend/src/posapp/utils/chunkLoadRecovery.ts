@@ -1,3 +1,5 @@
+import { buildPosAppRecoveryLocation } from "../../loader-utils";
+
 const POSAPP_ROUTE = "/app/posapp";
 const CHUNK_RELOAD_KEY = "posa_chunk_reload_once";
 const CHUNK_CACHE_RECOVERY_KEY = "posa_chunk_cache_recovery_once";
@@ -21,7 +23,9 @@ export function isDynamicImportFailure(error: unknown): boolean {
 		message.includes("failed to fetch dynamically imported module") ||
 		message.includes("loading chunk") ||
 		message.includes("chunkloaderror") ||
-		message.includes("importing a module script failed")
+		message.includes("importing a module script failed") ||
+		(message.includes("requested module") &&
+			message.includes("does not provide an export named"))
 	);
 }
 
@@ -64,11 +68,21 @@ export function scheduleAfterStableBoot(task: () => void | Promise<void>) {
 	}, CHUNK_RECOVERY_STABLE_DELAY_MS);
 }
 
+export function buildChunkRecoveryLocation(
+	locationLike: { pathname?: string; search?: string; hash?: string } | null | undefined,
+	param: string,
+	token: string | number = Date.now(),
+) {
+	return buildPosAppRecoveryLocation(locationLike, param, token, POSAPP_ROUTE);
+}
+
 function redirectToPosApp(param: string) {
 	if (typeof window === "undefined" || !window.location) {
 		return false;
 	}
-	window.location.replace(`${POSAPP_ROUTE}?${param}=${Date.now()}`);
+	window.location.replace(
+		buildChunkRecoveryLocation(window.location, param, Date.now()),
+	);
 	return true;
 }
 

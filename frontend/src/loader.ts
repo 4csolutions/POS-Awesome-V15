@@ -1,5 +1,8 @@
 declare const __BUILD_VERSION__: string;
-import { resolvePosAppNormalizedPath } from "./loader-utils";
+import {
+	buildPosAppRecoveryLocation,
+	resolvePosAppNormalizedPath,
+} from "./loader-utils";
 
 const POSAPP_BASE_PATH = "/app/posapp";
 const VERSION_ENDPOINT = "/assets/posawesome/dist/js/version.json";
@@ -54,7 +57,9 @@ function isDynamicImportFailure(error: unknown): boolean {
 		normalized.includes("failed to fetch dynamically imported module") ||
 		normalized.includes("loading chunk") ||
 		normalized.includes("chunkloaderror") ||
-		normalized.includes("importing a module script failed")
+		normalized.includes("importing a module script failed") ||
+		(normalized.includes("requested module") &&
+			normalized.includes("does not provide an export named"))
 	);
 }
 
@@ -83,7 +88,14 @@ function recoverByReloadingPosApp() {
 
 	const storage = window.sessionStorage;
 	if (!storage) {
-		window.location.replace(`/app/posapp?_posa_loader_recovery=${Date.now()}`);
+		window.location.replace(
+			buildPosAppRecoveryLocation(
+				window.location,
+				"_posa_loader_recovery",
+				Date.now(),
+				POSAPP_BASE_PATH,
+			),
+		);
 		return;
 	}
 
@@ -92,7 +104,14 @@ function recoverByReloadingPosApp() {
 	}
 
 	storage.setItem(LOADER_RECOVERY_KEY, "1");
-	window.location.replace(`/app/posapp?_posa_loader_recovery=${Date.now()}`);
+	window.location.replace(
+		buildPosAppRecoveryLocation(
+			window.location,
+			"_posa_loader_recovery",
+			Date.now(),
+			POSAPP_BASE_PATH,
+		),
+	);
 }
 
 async function importPosAwesomeBundle() {

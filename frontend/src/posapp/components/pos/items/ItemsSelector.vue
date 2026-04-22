@@ -91,37 +91,39 @@
 								:context="context"
 								:selected-currency="selected_currency"
 								:hide-qty-decimals="hide_qty_decimals"
-								:get-last-invoice-rate="getLastInvoiceRate"
-								:is-item-highlighted="isItemHighlighted"
-								:currency-symbol="currencySymbol"
-								:format-currency="memoizedFormatCurrency"
-								:format-number="memoizedFormatNumber"
-								:rate-precision="ratePrecision"
-								:is-negative="isNegative"
-								:no-items-title="__('No items found')"
-								:no-items-subtitle="__('Try adjusting your search or filters')"
-								:clear-search-label="__('Clear Search')"
-								@select-item="select_item"
-								@dragstart="onDragStart"
-								@dragend="onDragEnd"
-								@virtual-range-update="onVirtualRangeUpdate"
-								@clear-search="clearSearch"
-							/>
-							<ItemsSelectorTable
-								v-else
-								ref="itemsTable"
-								:headers="headers"
-								:displayed-items="displayedItems"
-								:header-props="headerProps"
-								:context="context"
-								:pos-profile="pos_profile"
-								:selected-currency="selected_currency"
-								:hide-qty-decimals="hide_qty_decimals"
-								:currency-symbol="currencySymbol"
-								:format-currency="memoizedFormatCurrency"
-								:format-number="memoizedFormatNumber"
-								:rate-precision="ratePrecision"
-								:get-last-invoice-rate="getLastInvoiceRate"
+								:show-rate-info="show_last_invoice_rate"
+								:get-item-rate-info="getItemRateInfo"
+						:is-item-highlighted="isItemHighlighted"
+						:currency-symbol="currencySymbol"
+						:format-currency="memoizedFormatCurrency"
+						:format-number="memoizedFormatNumber"
+						:rate-precision="ratePrecision"
+						:is-negative="isNegative"
+						:no-items-title="__('No items found')"
+						:no-items-subtitle="__('Try adjusting your search or filters')"
+						:clear-search-label="__('Clear Search')"
+						@select-item="select_item"
+						@dragstart="onDragStart"
+						@dragend="onDragEnd"
+						@virtual-range-update="onVirtualRangeUpdate"
+						@clear-search="clearSearch"
+					/>
+					<ItemsSelectorTable
+						v-else
+						ref="itemsTable"
+						:headers="headers"
+						:displayed-items="displayedItems"
+						:header-props="headerProps"
+						:context="context"
+						:pos-profile="pos_profile"
+						:selected-currency="selected_currency"
+						:hide-qty-decimals="hide_qty_decimals"
+						:show-rate-info="show_last_invoice_rate"
+						:currency-symbol="currencySymbol"
+						:format-currency="memoizedFormatCurrency"
+						:format-number="memoizedFormatNumber"
+						:rate-precision="ratePrecision"
+						:get-item-rate-info="getItemRateInfo"
 								:is-negative="isNegative"
 								:item-class="getItemRowClass"
 								:row-props="getItemRowProps"
@@ -220,6 +222,8 @@ import { useItemAddition } from "../../../composables/pos/items/useItemAddition"
 import { useItemSelection } from "../../../composables/pos/items/useItemSelection";
 import { useItemSelectorLayout } from "../../../composables/pos/items/useItemSelectorLayout";
 import { useLastInvoiceRate } from "../../../composables/pos/items/useLastInvoiceRate";
+import { useLastBuyingRate } from "../../../composables/pos/items/useLastBuyingRate";
+import { useItemRateInfo } from "../../../composables/pos/items/useItemRateInfo";
 import { useItemSync } from "../../../composables/pos/items/useItemSync";
 import { useItemStorageSafety } from "../../../composables/pos/items/useItemStorageSafety";
 import { useItemsSelectorSearch } from "../../../composables/pos/items/useItemsSelectorSearch";
@@ -235,6 +239,7 @@ import { useCustomersStore } from "../../../stores/customersStore";
 import { useToastStore } from "../../../stores/toastStore";
 import { useUIStore } from "../../../stores/uiStore";
 import { useInvoiceStore } from "../../../stores/invoiceStore";
+import { useEmployeeStore } from "../../../stores/employeeStore";
 
 import { parseBooleanSetting } from "../../../utils/stock";
 import {
@@ -262,6 +267,7 @@ const customersStore = useCustomersStore();
 const toastStore = useToastStore();
 const uiStore = useUIStore();
 const invoiceStore = useInvoiceStore();
+const employeeStore = useEmployeeStore();
 const { selectedCustomer } = storeToRefs(customersStore);
 const {
 	posProfile: uiPosProfile,
@@ -269,6 +275,7 @@ const {
 	triggerTopItemSelection,
 	activeView,
 } = storeToRefs(uiStore);
+const { currentCashier } = storeToRefs(employeeStore);
 const { deferStockValidationToPayment: invoiceTypeDefersStockValidation } =
 	storeToRefs(invoiceStore);
 
@@ -392,6 +399,9 @@ const couponsCount = computed(() => uiStore.couponsCount || 0);
 // selected_currency is now a local ref synced via eventBus
 const active_price_list = computed(
 	() => itemsIntegration.active_price_list.value || pos_profile.value?.selling_price_list,
+);
+const isPosSupervisor = computed(() =>
+	parseBooleanSetting(currentCashier.value?.is_supervisor),
 );
 
 const isReturnInvoice = computed(() => {
@@ -535,6 +545,32 @@ const { getLastInvoiceRate, scheduleLastInvoiceRateRefresh, clearLastInvoiceRate
 	displayedItems: () => displayedItems.value,
 	show_last_invoice_rate: () => show_last_invoice_rate.value,
 	autoRefresh: true,
+});
+
+const selectedSupplier = ref<string | null>(null);
+
+const { getLastBuyingRate, scheduleLastBuyingRateRefresh, clearLastBuyingRateCache } = useLastBuyingRate({
+	pos_profile: () => pos_profile.value,
+	supplier: () => selectedSupplier.value,
+	displayedItems: () => displayedItems.value,
+	show_last_buying_rate: () =>
+		show_last_invoice_rate.value
+		&& parseBooleanSetting(currentCashier.value?.is_supervisor),
+});
+
+const getLastRateForContext = (item: any) => {
+	if (props.context === "purchase") {
+		return getLastBuyingRate(item);
+	}
+	return getLastInvoiceRate(item);
+};
+
+const { getItemRateInfo } = useItemRateInfo({
+	context: () => props.context,
+	pos_profile: () => pos_profile.value,
+	is_pos_supervisor: () => isPosSupervisor.value,
+	getLastInvoiceRate,
+	getLastBuyingRate,
 });
 
 const {
@@ -784,6 +820,8 @@ const openNewItemDialog = () => {
 };
 
 onMounted(async () => {
+	itemAvailability.initAvailability();
+
 	itemAvailability.registerCallbacks({
 		getItems: () => items.value,
 		getDisplayedItems: () => displayedItems.value,
@@ -952,7 +990,24 @@ onMounted(async () => {
 		eventBus.on("update_customer_price_list", (priceList) => {
 			syncSelectorPriceList(priceList);
 		});
+		eventBus.on("update_buying_price_list", (data) => {
+			if (data && typeof data === "object") {
+				if (data.price_list) syncSelectorPriceList(data.price_list);
+				selectedSupplier.value = data.supplier || null;
+				scheduleLastBuyingRateRefresh();
+			} else if (typeof data === "string") {
+				syncSelectorPriceList(data);
+				selectedSupplier.value = null;
+				scheduleLastBuyingRateRefresh();
+			} else {
+				selectedSupplier.value = null;
+			}
+		});
 		eventBus.on("focus_item_search", requestItemSearchFocus);
+		eventBus.on(
+			"cart_quantities_updated",
+			itemAvailability.handleCartQuantitiesUpdated,
+		);
 		eventBus.on("remote_stock_adjustment", handleRemoteStockAdjustment);
 	}
 
@@ -1026,7 +1081,12 @@ onBeforeUnmount(() => {
 	if (eventBus) {
 		eventBus.off("update_currency");
 		eventBus.off("update_customer_price_list");
+		eventBus.off("update_buying_price_list");
 		eventBus.off("focus_item_search", requestItemSearchFocus);
+		eventBus.off(
+			"cart_quantities_updated",
+			itemAvailability.handleCartQuantitiesUpdated,
+		);
 		eventBus.off("remote_stock_adjustment", handleRemoteStockAdjustment);
 	}
 	if (props.context === "pos") {
@@ -1065,12 +1125,21 @@ watch(selectedCustomer, () => {
 	scheduleLastInvoiceRateRefresh();
 });
 
+watch(isPosSupervisor, (isSupervisor) => {
+	if (!isSupervisor) {
+		clearLastBuyingRateCache();
+		return;
+	}
+	scheduleLastBuyingRateRefresh();
+});
+
 watch(displayedItems, () => {
 	nextTick(() => {
 		checkItemContainerOverflow();
 		scheduleCardMetricsUpdate();
 	});
 	scheduleLastInvoiceRateRefresh();
+	scheduleLastBuyingRateRefresh();
 	itemSelection.syncHighlightedItem();
 });
 
@@ -1355,6 +1424,8 @@ defineExpose({
 	virtualScrollBuffer,
 	selected_currency,
 	getLastInvoiceRate,
+	getLastRateForContext,
+	getItemRateInfo,
 	isItemHighlighted,
 	isNegative,
 	headerProps,

@@ -8,6 +8,10 @@ import {
 	setItemsLastSync,
 	getItemsLastSync,
 	saveItemDetailsCache,
+	saveItemUOMs,
+	saveItemGroups,
+	getCachedItemGroups,
+	refreshBootstrapSnapshotFromCacheState,
 } from "../../../../../offline/index";
 
 export interface BackgroundSyncState {
@@ -41,6 +45,7 @@ export function useItemsSync() {
 					}
 				});
 				itemGroups.value = groups;
+				saveItemGroups(groups);
 			} else {
 				// Fallback to API
 				const response = await itemService.getItemGroups();
@@ -51,10 +56,16 @@ export function useItemsSync() {
 						groups.push(element.name);
 					});
 					itemGroups.value = groups;
+					saveItemGroups(groups);
 				}
 			}
 		} catch (error) {
 			console.error("Failed to load item groups:", error);
+			const cachedGroups = getCachedItemGroups();
+			if (Array.isArray(cachedGroups) && cachedGroups.length > 0) {
+				itemGroups.value = cachedGroups as string[];
+				saveItemGroups(cachedGroups as string[]);
+			}
 		}
 	};
 
@@ -85,70 +96,33 @@ export function useItemsSync() {
 		}
 	};
 
-	const backgroundLoadItemDetails = async (
+	const primeItemDetailsCache = (
 		itemList: Item[],
 		posProfile: POSProfile | null,
 		activePriceList: string,
-		getItemByCode: (_code: string) => Item | undefined,
 	) => {
-		if (!itemList || itemList.length === 0) return;
+		if (!Array.isArray(itemList) || itemList.length === 0 || !posProfile?.name) {
+			return;
+		}
 
-		try {
-			// Process in batches to avoid overwhelming the server
-			const batchSize = 20;
-			for (let i = 0; i < itemList.length; i += batchSize) {
-				const batch = itemList.slice(i, i + batchSize);
+		const detailItems = itemList.filter(
+			(item): item is Item => Boolean(item?.item_code),
+		);
+		if (!detailItems.length) {
+			return;
+		}
 
-				// Add small delay between batches
-				if (i > 0) {
-					await new Promise((resolve) => setTimeout(resolve, 200));
-				}
+		saveItemDetailsCache(
+			posProfile.name,
+			typeof activePriceList === "string" ? activePriceList : "",
+			detailItems,
+		);
 
-				await loadItemDetailsBatch(
-					batch,
-					posProfile,
-					activePriceList,
-					getItemByCode,
-				);
+		detailItems.forEach((item) => {
+			if (Array.isArray(item.item_uoms) && item.item_uoms.length > 0) {
+				saveItemUOMs(item.item_code, item.item_uoms);
 			}
-		} catch (error) {
-			console.error("Background item details loading failed:", error);
-		}
-	};
-
-	const loadItemDetailsBatch = async (
-		itemBatch: Item[],
-		posProfile: POSProfile | null,
-		activePriceList: string,
-		getItemByCode: (_code: string) => Item | undefined,
-	) => {
-		try {
-			if (!posProfile) return;
-			// @ts-ignore
-			const response = await frappe.call({
-				method: "posawesome.posawesome.api.items.get_items_details",
-				args: {
-					pos_profile: JSON.stringify(posProfile),
-					items_data: JSON.stringify(itemBatch),
-					price_list: activePriceList,
-				},
-			});
-
-			const details = response.message || [];
-
-			// Update items with details
-			details.forEach((detail: any) => {
-				const item = getItemByCode(detail.item_code);
-				if (item) {
-					Object.assign(item, detail);
-				}
-			});
-
-			// Cache the details
-			saveItemDetailsCache(posProfile.name, activePriceList, details);
-		} catch (error) {
-			console.error("Failed to load item details batch:", error);
-		}
+		});
 	};
 
 	const cancelBackgroundSync = () => {
@@ -313,6 +287,7 @@ export function useItemsSync() {
 					break;
 				}
 
+				primeItemDetailsCache(batch, posProfile, activePriceList);
 				await saveItemsBulk(batch, scope);
 				setItems(batch, { append: true });
 				appended.push(...batch);
@@ -344,6 +319,9 @@ export function useItemsSync() {
 				itemsLoaded.value = true;
 				await updateCachedPaginationFromStorage();
 				setItemsLastSync(new Date().toISOString());
+				refreshBootstrapSnapshotFromCacheState({
+					itemsCount: loaded,
+				});
 			}
 
 			return appended;
@@ -368,7 +346,7 @@ export function useItemsSync() {
 		itemGroups,
 		loadItemGroups,
 		persistItemsToStorage,
-		backgroundLoadItemDetails,
+		primeItemDetailsCache,
 		cancelBackgroundSync,
 		refreshModifiedItems,
 		backgroundSyncItems,
