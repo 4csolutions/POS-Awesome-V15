@@ -471,7 +471,7 @@ export function useItemAddition() {
 						// Fallback to standard behavior (likely picks first or none)
 						callSetBatchQty(context, new_item, null, false);
 					} else {
-						let remaining_qty = new_item.qty;
+						let remaining_qty = Math.abs(new_item.qty);
 
 						const allocations: Array<{ batch: any; qty: number }> =
 							[];

@@ -656,7 +656,7 @@ const add_item = async (item, optionsOrQty: any = {}) => {
 					await itemDetailFetcher.update_items_details([item], { forceRefresh: true });
 				}
 				selectedItemForDialog.value = item;
-				dialogContext.value = context;
+				dialogContext.value = { ...context, qty: requestedQty };
 				itemQuantityBatchDialog.value = true;
 				return;
 			}

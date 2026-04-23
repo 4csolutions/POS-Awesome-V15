@@ -462,7 +462,7 @@ interface Props {
 	validateDueDate: (_item: any) => void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
 	"qty-change": [item: CartItem, event: any];
@@ -477,7 +477,7 @@ const onQtyChange = (item: CartItem, event: any) => {
 
 const getRaw = (item: any) => item?.raw || {};
 const getBatchOptions = (item: any) =>
-	getDisplayableBatchOptions(item?.batch_no_data);
+	getDisplayableBatchOptions(item?.batch_no_data, props.isReturnInvoice);
 </script>
 
 <style scoped>

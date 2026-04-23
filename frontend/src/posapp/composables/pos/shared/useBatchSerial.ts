@@ -1,4 +1,4 @@
-export const getDisplayableBatchOptions = (batchList: any): any[] => {
+export const getDisplayableBatchOptions = (batchList: any, isReturn = false): any[] => {
 	if (!Array.isArray(batchList)) {
 		return [];
 	}
@@ -7,6 +7,8 @@ export const getDisplayableBatchOptions = (batchList: any): any[] => {
 		if (!batch?.batch_no) {
 			return false;
 		}
+
+		if (isReturn) return true;
 
 		const rawAvailableQty =
 			batch.available_qty ?? batch.batch_qty ?? batch.original_batch_qty;
@@ -175,7 +177,7 @@ export function useBatchSerial() {
 		});
 
 		normalized_batch_data = normalized_batch_data.filter(
-			(batch) => !batch.is_expired,
+			(batch) => context?.isReturnInvoice || !batch.is_expired,
 		);
 
 		normalized_batch_data.sort((a, b) => {
@@ -242,7 +244,7 @@ export function useBatchSerial() {
 			context,
 		);
 		const selectable_batches = normalized_batch_data.filter(
-			(batch) => batch.available_qty > 0,
+			(batch) => context?.isReturnInvoice || batch.available_qty > 0,
 		);
 		const selection_pool =
 			selectable_batches.length > 0

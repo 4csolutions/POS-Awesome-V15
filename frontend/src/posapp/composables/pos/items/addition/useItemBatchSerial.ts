@@ -22,7 +22,7 @@ export function useItemBatchSerial() {
 
 	const showBatchDialog = (item: any, context: any) => {
 		const opts = Array.isArray(item.batch_no_data)
-			? getDisplayableBatchOptions(item.batch_no_data)
+			? getDisplayableBatchOptions(item.batch_no_data, context?.isReturnInvoice)
 			: [];
 		if (opts.length > 0) {
 			const dialog = new frappe.ui.Dialog({
