@@ -186,7 +186,9 @@
 								@update:expanded="handleExpandedUpdate"
 								@reorder-items="handleItemReorder"
 								@add-item-from-drag="handleItemDrop"
-								@show-drop-feedback="(isDragging) => showDropFeedback(isDragging, itemsTableRef)"
+								@show-drop-feedback="
+									(isDragging) => showDropFeedback(isDragging, itemsTableRef)
+								"
 								@item-dropped="showDropFeedback(false, itemsTableRef)"
 								@view-packed="openPackedItems"
 							/>
@@ -280,7 +282,7 @@ import { storeToRefs } from "pinia";
 import stockCoordinator from "../../utils/stockCoordinator";
 import { getCurrentInstance, ref } from "vue";
 import { save_and_clear_invoice as saveAndClearInvoiceAction } from "./invoice_utils/actions";
-import { fetchDraftInvoiceDoc, fetchDraftInvoices } from "../../utils/draftInvoices";
+import { fetchDraftInvoices } from "../../utils/draftInvoices";
 
 // Composables
 import { useOnlineStatus } from "../../composables/core/useOnlineStatus";
@@ -316,6 +318,8 @@ export default {
 			packedItems: packed_items,
 			invoiceDoc: invoice_doc,
 			invoiceType,
+			flowToLoad,
+			flowContext,
 		} = storeToRefs(invoiceStore);
 		const itemsTableRef = ref(null);
 		const currencyState = useInvoiceCurrency({}, {});
@@ -354,6 +358,8 @@ export default {
 			selectedCustomer,
 			customerRefreshToken,
 			invoiceType,
+			flowToLoad,
+			flowContext,
 			itemsTableRef,
 			...currencyState,
 			...itemActions,
@@ -372,6 +378,8 @@ export default {
 			customer: "",
 			customer_info: "",
 			customer_balance: 0,
+			customer_balance_currency: undefined,
+			customer_balance_loading: false,
 			total_tax: 0,
 			packed_dialog_items: [],
 			show_packed_dialog: false,
@@ -482,22 +490,14 @@ export default {
 			},
 		},
 		return_discount_meta() {
-			if (
-				!this.isReturnInvoice ||
-				!this.return_doc ||
-				this.pos_profile?.posa_use_percentage_discount
-			) {
+			if (!this.isReturnInvoice || !this.return_doc || this.pos_profile?.posa_use_percentage_discount) {
 				return null;
 			}
 
-			const originalDiscount = Math.abs(
-				Number(this.return_discount_base_amount || 0),
-			);
+			const originalDiscount = Math.abs(Number(this.return_discount_base_amount || 0));
 			if (!originalDiscount) return null;
 
-			const originalTotal = Math.abs(
-				Number(this.return_discount_base_total || 0),
-			);
+			const originalTotal = Math.abs(Number(this.return_discount_base_total || 0));
 			if (!originalTotal) return null;
 
 			const returnTotal = Math.abs(Number(this.Total || 0));
@@ -588,12 +588,8 @@ export default {
 				return;
 			}
 
-			const originalDiscount = Math.abs(
-				Number(this.return_discount_base_amount || 0),
-			);
-			const originalTotal = Math.abs(
-				Number(this.return_discount_base_total || 0),
-			);
+			const originalDiscount = Math.abs(Number(this.return_discount_base_amount || 0));
+			const originalTotal = Math.abs(Number(this.return_discount_base_total || 0));
 			const returnTotal = Math.abs(Number(this.Total || 0));
 
 			if (!originalDiscount || !originalTotal || !returnTotal) {
@@ -773,22 +769,41 @@ export default {
 		handleLoadOrder(data) {
 			this.new_order(data);
 		},
+		handleLoadFlow(flow) {
+			if (!flow?.prepared_doc) {
+				return;
+			}
+
+			this.invoiceStore.setFlowContext?.(flow.flow_context || null);
+			const action = flow?.action || flow?.flow_context?.prepared_action;
+			const targetDoctype = flow?.flow_context?.target_doctype || flow?.prepared_doc?.doctype || "";
+
+			if (targetDoctype === "Quotation" || action === "quote_edit_draft") {
+				this.invoiceType = "Quotation";
+				this.invoiceTypes = ["Invoice", "Order", "Quotation"];
+			} else if (
+				targetDoctype === "Sales Order" ||
+				action === "order_load" ||
+				action === "quote_to_order"
+			) {
+				this.invoiceType = "Order";
+				this.invoiceTypes = ["Invoice", "Order", "Quotation"];
+			} else {
+				this.invoiceType = "Invoice";
+				this.invoiceTypes = ["Invoice", "Order", "Quotation"];
+			}
+
+			this.load_invoice(flow.prepared_doc, { preserveStickies: true });
+		},
 
 		calcProratedReturnDiscount(returnDoc) {
 			if (!returnDoc) return 0;
 
-			const originalDiscount = Math.abs(
-				Number(returnDoc.discount_amount || 0),
-			);
+			const originalDiscount = Math.abs(Number(returnDoc.discount_amount || 0));
 			if (!originalDiscount) return 0;
 
 			const originalTotal = Math.abs(
-				Number(
-					returnDoc.total ??
-						returnDoc.net_total ??
-						returnDoc.grand_total ??
-						0,
-				),
+				Number(returnDoc.total ?? returnDoc.net_total ?? returnDoc.grand_total ?? 0),
 			);
 			if (!originalTotal) return 0;
 
@@ -821,6 +836,16 @@ export default {
 			this.invoiceType = "Return";
 			this.invoiceTypes = ["Return"];
 			this.invoice_doc.is_return = 1;
+			if (Array.isArray(this.invoice_doc.payments)) {
+				this.invoice_doc.payments.forEach((payment) => {
+					const amount = this.flt(payment.amount || 0, this.currency_precision);
+					payment.amount = amount ? -Math.abs(amount) : 0;
+					if (payment.base_amount !== undefined) {
+						const baseAmount = this.flt(payment.base_amount || 0, this.currency_precision);
+						payment.base_amount = baseAmount ? -Math.abs(baseAmount) : 0;
+					}
+				});
+			}
 			if (this.items && this.items.length) {
 				this.items.forEach((item) => {
 					if (item.qty > 0) item.qty = -Math.abs(item.qty);
@@ -830,9 +855,7 @@ export default {
 			if (data.return_doc) {
 				this.return_doc = data.return_doc;
 				this.invoice_doc.return_against = data.return_doc.name;
-				this.return_discount_base_amount = Math.abs(
-					Number(data.return_doc.discount_amount || 0),
-				);
+				this.return_discount_base_amount = Math.abs(Number(data.return_doc.discount_amount || 0));
 				this.return_discount_base_total = Math.abs(
 					Number(
 						data.return_doc.total ??
@@ -843,32 +866,25 @@ export default {
 				);
 				console.log("[POSA][Returns] Loaded return doc", {
 					return_against: data.return_doc.name,
-					is_percentage:
-						!!this.pos_profile?.posa_use_percentage_discount,
+					is_percentage: !!this.pos_profile?.posa_use_percentage_discount,
 					discount_amount: data.return_doc.discount_amount,
-					discount_percentage:
-						data.return_doc.additional_discount_percentage,
+					discount_percentage: data.return_doc.additional_discount_percentage,
 					original_total:
-						data.return_doc.total ??
-						data.return_doc.net_total ??
-						data.return_doc.grand_total,
+						data.return_doc.total ?? data.return_doc.net_total ?? data.return_doc.grand_total,
 					base_total: this.return_discount_base_total,
 					base_discount: this.return_discount_base_amount,
 				});
 
 				if (this.pos_profile?.posa_use_percentage_discount) {
-					if (
-						data.return_doc.additional_discount_percentage !==
-						undefined
-					) {
-						this.additional_discount_percentage =
-							data.return_doc.additional_discount_percentage || 0;
+					if (data.return_doc.additional_discount_percentage !== undefined) {
+						this.additional_discount_percentage = this.flt(
+							data.return_doc.additional_discount_percentage || 0,
+							this.float_precision,
+						);
 					}
 					this.update_discount_umount();
 				} else {
-					const prorated = this.calcProratedReturnDiscount(
-						data.return_doc,
-					);
+					const prorated = this.calcProratedReturnDiscount(data.return_doc);
 					this.discount_amount = prorated;
 					this.additional_discount = prorated;
 					this.additional_discount_percentage = 0;
@@ -887,12 +903,9 @@ export default {
 		},
 		async resume_parked_order(draft) {
 			try {
-				const message = await fetchDraftInvoiceDoc({
-					draft,
-					posProfile: this.pos_profile,
-				});
+				const message = await this.load_draft_source_record(draft);
 				if (message) {
-					this.invoiceStore.triggerLoadInvoice(message);
+					this.uiStore?.closeDrafts?.();
 				}
 			} catch (error) {
 				console.error("Error loading parked order:", error);
@@ -912,11 +925,8 @@ export default {
 				this.price_list_rate_dialog_resolver(null);
 			}
 
-			this.price_list_rate_dialog_initial_rate =
-				initialRate == null ? "" : String(initialRate);
-			this.price_list_rate_dialog_item_label = String(
-				item?.item_name || item?.item_code || "",
-			);
+			this.price_list_rate_dialog_initial_rate = initialRate == null ? "" : String(initialRate);
+			this.price_list_rate_dialog_item_label = String(item?.item_name || item?.item_code || "");
 			this.price_list_rate_dialog_open = true;
 
 			return new Promise((resolve) => {
@@ -994,6 +1004,22 @@ export default {
 		);
 
 		this.$watch(
+			() => this.invoiceStore.flowToLoad,
+			(flow) => {
+				if (flow?.prepared_doc) {
+					this.handleLoadFlow(flow);
+				} else if (flow) {
+					this.handleLoadFlow({
+						action: this.invoiceStore.flowContext?.prepared_action,
+						prepared_doc: flow,
+						flow_context: this.invoiceStore.flowContext,
+					});
+				}
+			},
+			{ deep: false },
+		);
+
+		this.$watch(
 			() => this.uiStore.draggedItem,
 			(item) => {
 				this.showDropFeedback(!!item, this.itemsTableRef);
@@ -1022,8 +1048,7 @@ export default {
 			load_return_invoice: this.handleLoadReturnInvoice,
 			set_new_line: this.handleSetNewLine,
 			calc_uom: this.calc_uom,
-			recalculate_return_discount: (payload) =>
-				this.applyReturnDiscountProration(payload),
+			recalculate_return_discount: (payload) => this.applyReturnDiscountProration(payload),
 			reset_invoice_type_to_invoice: () => {
 				this.invoiceType = "Invoice";
 				this.invoiceTypes = ["Invoice", "Order", "Quotation"];
@@ -1092,20 +1117,14 @@ export default {
 		this._shortcutHandlers.handleInvoiceShortcut = createInvoiceShortcutListeners(
 			this.handleInvoiceShortcut.bind(this),
 		);
-		registerInvoiceShortcutListener(
-			document,
-			this._shortcutHandlers.handleInvoiceShortcut,
-		);
+		registerInvoiceShortcutListener(document, this._shortcutHandlers.handleInvoiceShortcut);
 	},
 	unmounted() {
 		if (!this._shortcutHandlers) {
 			return;
 		}
 
-		unregisterInvoiceShortcutListener(
-			document,
-			this._shortcutHandlers.handleInvoiceShortcut,
-		);
+		unregisterInvoiceShortcutListener(document, this._shortcutHandlers.handleInvoiceShortcut);
 
 		this._shortcutHandlers = {};
 	},

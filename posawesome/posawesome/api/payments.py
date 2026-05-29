@@ -188,6 +188,7 @@ def make_payment_request(**args):
             pr.submit()
 
     if args.order_type == "Shopping Cart":
+        # Persist the Payment Request before redirecting the browser to the gateway URL.
         frappe.db.commit()
         frappe.local.response["type"] = "redirect"
         frappe.local.response["location"] = pr.get_payment_url()
@@ -517,9 +518,7 @@ def _is_exact_repaired_change_allocation(
     if not matching_references:
         return False
 
-    allocated_to_invoice = sum(
-        flt(_row_value(row, "allocated_amount")) for row in matching_references
-    )
+    allocated_to_invoice = sum(flt(_row_value(row, "allocated_amount")) for row in matching_references)
     total_allocated_amount = flt(
         _row_value(payment_doc, "total_allocated_amount", _row_value(payment_row, "total_allocated_amount"))
     )
@@ -596,9 +595,7 @@ def repair_overpayment_change_allocations(
     )
 
     if invoice_names:
-        candidate_invoices = [
-            row for row in candidate_invoices if _row_value(row, "name") in invoice_names
-        ]
+        candidate_invoices = [row for row in candidate_invoices if _row_value(row, "name") in invoice_names]
 
     matched = []
     repaired = []
@@ -609,9 +606,7 @@ def repair_overpayment_change_allocations(
         invoice_customer = _row_value(invoice, "customer")
         invoice_company = _row_value(invoice, "company")
         amount_to_allocate = abs(flt(_row_value(invoice, "outstanding_amount")))
-        change_amount = flt(
-            _row_value(invoice, "change_amount") or _row_value(invoice, "base_change_amount")
-        )
+        change_amount = flt(_row_value(invoice, "change_amount") or _row_value(invoice, "base_change_amount"))
 
         if amount_to_allocate <= 0:
             skipped.append(

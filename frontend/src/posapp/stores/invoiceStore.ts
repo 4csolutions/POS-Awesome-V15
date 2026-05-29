@@ -16,9 +16,8 @@
  *
  * ## Totals
  * `totalQty`, `grossTotal`, and `discountTotal` are maintained as separate refs.
- * Operations that add or remove rows call `recalculateTotals()` immediately. Incremental
- * field edits (detected by a deep watcher on `itemsData`) are debounced through
- * `triggerUpdateTotals` (50 ms) to avoid thrashing during rapid user input.
+ * Row inserts/removals and store-mediated item edits update those totals
+ * incrementally. Manual edit paths call the debounced total refresh explicitly.
  *
  * ## Sticky fields
  * Discount and delivery-charge fields that should survive an invoice reset are stored as
@@ -27,15 +26,17 @@
  */
 
 import { defineStore } from "pinia";
-import { computed, ref, reactive, watch } from "vue";
+import { computed, ref, reactive } from "vue";
 
 declare const frappe: any;
 declare const __: any;
 import type {
 	CartItem,
 	InvoiceDoc,
+	InvoiceDocRef,
 	InvoiceMetadata,
 	DeliveryCharge,
+	PartialInvoiceDoc,
 } from "../types/models";
 
 /**
@@ -65,8 +66,20 @@ const toNumber = (value: any): number => {
 
 const cloneItem = <T>(item: T): T => ({ ...item });
 
+const getItemTotals = (item: any) => {
+	const qty = toNumber(item?.qty);
+	const rate = toNumber(item?.rate);
+	const disc = toNumber(item?.discount_amount || 0);
+
+	return {
+		qty,
+		gross: qty * rate,
+		discount: Math.abs(qty * disc),
+	};
+};
+
 export const useInvoiceStore = defineStore("invoice", () => {
-	const invoiceDoc = ref<InvoiceDoc | null>(null);
+	const invoiceDoc = ref<PartialInvoiceDoc | null>(null);
 	const invoiceType = ref("Invoice");
 	// Normalized state: keys array + items map
 	const itemOrder = ref<string[]>([]);
@@ -126,6 +139,35 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		discountTotal.value = tDisc;
 	};
 
+	const applyTotalsDelta = (
+		deltaQty: number,
+		deltaGross: number,
+		deltaDiscount: number,
+	) => {
+		totalQty.value += deltaQty;
+		grossTotal.value += deltaGross;
+		discountTotal.value += deltaDiscount;
+	};
+
+	const addLineTotals = (item: any, multiplier = 1) => {
+		const totals = getItemTotals(item);
+		applyTotalsDelta(
+			totals.qty * multiplier,
+			totals.gross * multiplier,
+			totals.discount * multiplier,
+		);
+	};
+
+	const applyLineTotalsDiff = (before: any, after: any) => {
+		const oldTotals = getItemTotals(before);
+		const newTotals = getItemTotals(after);
+		applyTotalsDelta(
+			newTotals.qty - oldTotals.qty,
+			newTotals.gross - oldTotals.gross,
+			newTotals.discount - oldTotals.discount,
+		);
+	};
+
 	/**
 	 * Schedules a `recalculateTotals` call 50 ms in the future, coalescing multiple
 	 * calls within the same tick into a single recalculation.
@@ -136,6 +178,7 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		if (updateTimer) return;
 		updateTimer = setTimeout(() => {
 			recalculateTotals();
+			touch();
 			updateTimer = null;
 		}, 50);
 	};
@@ -148,18 +191,19 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	 * - An empty / whitespace-only string → `null`.
 	 * - Any object → shallow clone of the input cast to `InvoiceDoc`.
 	 */
-	const normalizeDoc = (doc: any): InvoiceDoc | null => {
+	const normalizeDoc = (doc: unknown): PartialInvoiceDoc | null => {
 		if (!doc) {
 			return null;
 		}
 
 		if (typeof doc === "string") {
-			return doc.trim()
-				? ({ name: doc, doctype: "POS Invoice" } as InvoiceDoc)
+			const name = doc.trim();
+			return name
+				? ({ name, doctype: "POS Invoice" } satisfies InvoiceDocRef)
 				: null;
 		}
 
-		return { ...doc };
+		return { ...(doc as PartialInvoiceDoc) };
 	};
 
 	/**
@@ -168,7 +212,9 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	 *
 	 * @param doc - Raw invoice document object, a name string, or a nullish value.
 	 */
-	const setInvoiceDoc = (doc: any) => {
+	const setInvoiceDoc = (
+		doc: PartialInvoiceDoc | string | null | undefined,
+	) => {
 		invoiceDoc.value = normalizeDoc(doc);
 		touch();
 	};
@@ -180,16 +226,18 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	 *
 	 * @param patch - Partial `InvoiceDoc` fields to apply. Defaults to `{}`.
 	 */
-	const mergeInvoiceDoc = (patch: Partial<InvoiceDoc> = {}) => {
+	const mergeInvoiceDoc = (patch: PartialInvoiceDoc = {}) => {
 		const current = invoiceDoc.value
 			? { ...invoiceDoc.value }
-			: ({} as InvoiceDoc);
+			: ({} as PartialInvoiceDoc);
 		invoiceDoc.value = Object.assign(current, patch || {});
 		touch();
 	};
 
 	const invoiceToLoad = ref<any>(null);
 	const orderToLoad = ref<any>(null);
+	const flowToLoad = ref<any>(null);
+	const flowContext = ref<any | null>(null);
 	const postingDate = ref(frappe.datetime.nowdate());
 
 	// Sticky fields moved from local component state
@@ -346,8 +394,8 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		} else {
 			itemOrder.value.push(rowId);
 		}
+		addLineTotals(cloned);
 		touch();
-		triggerUpdateTotals();
 		// Return the reactive proxy from the map
 		return itemsData.get(rowId);
 	};
@@ -365,13 +413,21 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	const addItems = (items: any[], index = -1) => {
 		if (!Array.isArray(items) || !items.length) return [];
 		const addedIds: string[] = [];
+		let deltaQty = 0;
+		let deltaGross = 0;
+		let deltaDiscount = 0;
 
 		items.forEach((item) => {
 			if (!item) return;
 			const rowId =
 				item.posa_row_id || Math.random().toString(36).substring(2, 20);
 			if (!item.posa_row_id) item.posa_row_id = rowId;
-			itemsData.set(rowId, cloneItem(item));
+			const cloned = cloneItem(item);
+			itemsData.set(rowId, cloned);
+			const totals = getItemTotals(cloned);
+			deltaQty += totals.qty;
+			deltaGross += totals.gross;
+			deltaDiscount += totals.discount;
 			addedIds.push(rowId);
 		});
 
@@ -383,8 +439,8 @@ export const useInvoiceStore = defineStore("invoice", () => {
 			} else {
 				itemOrder.value.push(...addedIds);
 			}
+			applyTotalsDelta(deltaQty, deltaGross, deltaDiscount);
 			touch();
-			recalculateTotals(); // Immediate update for batch addition
 		}
 
 		return addedIds.map((id) => itemsData.get(id));
@@ -411,14 +467,16 @@ export const useInvoiceStore = defineStore("invoice", () => {
 
 		const rowId = item.posa_row_id || oldId;
 		if (!item.posa_row_id) item.posa_row_id = rowId;
+		const previous = oldId ? itemsData.get(oldId) : undefined;
 
 		if (oldId !== rowId) {
 			itemsData.delete(oldId);
 			itemOrder.value[index] = rowId;
 		}
-		itemsData.set(rowId, cloneItem(item));
+		const cloned = cloneItem(item);
+		itemsData.set(rowId, cloned);
+		applyLineTotalsDiff(previous, cloned);
 		touch();
-		triggerUpdateTotals();
 	};
 
 	/**
@@ -443,14 +501,27 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		}
 
 		if (itemsData.has(rowId)) {
-			const existing = itemsData.get(rowId);
-			if (existing) {
+			updateItemWithTotals(rowId, (existing) => {
 				Object.assign(existing, item);
-			}
-			touch();
+			});
 		} else {
 			addItem(item);
 		}
+	};
+
+	const updateItemWithTotals = (
+		rowId: string,
+		updater: (_item: CartItem) => void,
+	) => {
+		if (!rowId || typeof updater !== "function") return;
+		const item = itemsData.get(rowId);
+		if (!item) return;
+
+		const before = cloneItem(item);
+		updater(item);
+		applyLineTotalsDiff(before, item);
+		touch();
+		return item;
 	};
 
 	/**
@@ -467,13 +538,16 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		}
 
 		if (itemsData.has(rowId)) {
+			const existing = itemsData.get(rowId);
 			itemsData.delete(rowId);
 			const idx = itemOrder.value.indexOf(rowId);
 			if (idx !== -1) {
 				itemOrder.value.splice(idx, 1);
 			}
+			if (existing) {
+				addLineTotals(existing, -1);
+			}
 			touch();
-			recalculateTotals(); // Immediate update on remove
 		}
 	};
 
@@ -521,6 +595,8 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	const clear = (options: { preserveStickies?: boolean } = {}) => {
 		const { preserveStickies = false } = options;
 		invoiceDoc.value = null;
+		flowContext.value = null;
+		flowToLoad.value = null;
 		clearItems();
 		packedItems.value = [];
 
@@ -568,16 +644,6 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		return map;
 	});
 
-	// Watch deep changes in the map values
-	watch(
-		itemsData,
-		() => {
-			touch();
-			triggerUpdateTotals();
-		},
-		{ deep: true },
-	);
-
 	return {
 		invoiceDoc,
 		invoiceType,
@@ -602,6 +668,8 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		addItems,
 		replaceItemAt,
 		upsertItem,
+		updateItemWithTotals,
+		triggerUpdateTotals,
 		removeItemByRowId,
 		clearItems,
 		setPackedItems,
@@ -617,10 +685,14 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		 *
 		 * @param doc - Invoice document object or name string to load.
 		 */
-		triggerLoadInvoice: (doc: any) => {
+		triggerLoadInvoice: (
+			doc: PartialInvoiceDoc | string | null | undefined,
+		) => {
 			invoiceToLoad.value = doc;
 		},
 		orderToLoad,
+		flowToLoad,
+		flowContext,
 		/**
 		 * Signals that `doc` should be loaded as the active order.
 		 * Sets `orderToLoad`, which is watched by the order-loading composable.
@@ -629,6 +701,16 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		 */
 		triggerLoadOrder: (doc: any) => {
 			orderToLoad.value = doc;
+		},
+		setFlowContext: (context: any) => {
+			flowContext.value = context || null;
+		},
+		clearFlowContext: () => {
+			flowContext.value = null;
+		},
+		triggerLoadFlow: (flow: any) => {
+			flowContext.value = flow?.flow_context || null;
+			flowToLoad.value = flow?.prepared_doc || flow;
 		},
 		// Exposed sticky fields
 		discountAmount,

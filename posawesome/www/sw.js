@@ -15,19 +15,25 @@ function buildVersionedAssetUrl(url, version) {
 	return `${url}?v=${encodeURIComponent(version || DEFAULT_CACHE_VERSION)}`;
 }
 
+function pickAssetUrl(assets, key, fallbackPath, version) {
+	// Entries are now content-hashed at build time (see
+	// build-manifest.js). The hashed filename is published in
+	// version.json -> assets[key]; fall back to the legacy un-hashed
+	// path for transitional rollouts where an old version.json is
+	// still being served.
+	const value = typeof assets?.[key] === "string" ? assets[key].trim() : "";
+	if (value) {
+		return value;
+	}
+	return buildVersionedAssetUrl(fallbackPath, version);
+}
+
 function getPrecacheUrls(version, assets = {}) {
-	const offlineIndexUrl =
-		typeof assets.offlineIndex === "string" && assets.offlineIndex
-			? assets.offlineIndex
-			: buildVersionedAssetUrl(
-					"/assets/posawesome/dist/js/offline/index.js",
-					version,
-				);
 	return [
-		buildVersionedAssetUrl("/assets/posawesome/dist/js/loader.js", version),
-		buildVersionedAssetUrl("/assets/posawesome/dist/js/posawesome.css", version),
-		buildVersionedAssetUrl("/assets/posawesome/dist/js/posawesome.js", version),
-		offlineIndexUrl,
+		pickAssetUrl(assets, "loader", "/assets/posawesome/dist/js/loader.js", version),
+		pickAssetUrl(assets, "css", "/assets/posawesome/dist/js/posawesome.css", version),
+		pickAssetUrl(assets, "posawesome", "/assets/posawesome/dist/js/posawesome.js", version),
+		pickAssetUrl(assets, "offlineIndex", "/assets/posawesome/dist/js/offline/index.js", version),
 		...STATIC_PRECACHE_URLS,
 	];
 }
@@ -74,15 +80,11 @@ function postVersionMessage(target) {
 
 function extractBuildVersion(payload) {
 	const version = payload?.version || payload?.buildVersion;
-	return typeof version === "string" && version.trim().length
-		? version.trim()
-		: DEFAULT_CACHE_VERSION;
+	return typeof version === "string" && version.trim().length ? version.trim() : DEFAULT_CACHE_VERSION;
 }
 
 function extractBuildAssets(payload) {
-	return payload?.assets && typeof payload.assets === "object"
-		? payload.assets
-		: {};
+	return payload?.assets && typeof payload.assets === "object" ? payload.assets : {};
 }
 
 // Listen for version check messages
@@ -153,8 +155,7 @@ async function getCacheName(forceRefresh = false, resolvedMetadata = null) {
 		return cacheNameInFlight;
 	}
 	cacheNameInFlight = (async () => {
-		const metadata =
-			resolvedMetadata || (await resolveBuildMetadata(forceRefresh));
+		const metadata = resolvedMetadata || (await resolveBuildMetadata(forceRefresh));
 		const version = metadata?.version || DEFAULT_CACHE_VERSION;
 		const name = `${CACHE_PREFIX}${version}`;
 		if (version !== DEFAULT_CACHE_VERSION) {
@@ -216,11 +217,7 @@ self.addEventListener("activate", (event) => {
 		(async () => {
 			const metadata = await resolveBuildMetadata();
 			const activeCacheName = await getCacheName(false, metadata);
-			await precacheUrls(
-				activeCacheName,
-				metadata.version,
-				metadata.assets,
-			);
+			await precacheUrls(activeCacheName, metadata.version, metadata.assets);
 			await cleanupObsoleteCaches(activeCacheName);
 			const cache = await caches.open(activeCacheName);
 			await enforceCacheLimit(cache);

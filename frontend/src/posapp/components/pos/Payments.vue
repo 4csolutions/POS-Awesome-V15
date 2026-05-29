@@ -14,10 +14,7 @@
 				location="top"
 				color="info"
 			></v-progress-linear>
-			<div
-				ref="paymentContainer"
-				class="overflow-y-auto payment-scroll"
-			>
+			<div ref="paymentContainer" class="overflow-y-auto payment-scroll">
 				<div :class="['payment-sections', { 'payment-sections--dialog': dialogMode }]">
 					<section class="payment-section payment-section--summary">
 						<div class="payment-section__header">
@@ -114,6 +111,7 @@
 							:displayCurrency="displayCurrency"
 							:diff_payment="diff_payment"
 							:diff_label="diff_label"
+							:item-discount-total="paymentItemDiscountTotal"
 							:currencySymbol="currencySymbol"
 							:formatCurrency="formatCurrency"
 						/>
@@ -198,39 +196,40 @@
 							@update:redeem-customer-credit="redeem_customer_credit = $event"
 							@get-available-credit="get_available_credit"
 						/>
-					<PaymentCustomerCreditDetails
-						:invoice-doc="invoice_doc"
-						:available-customer-credit="available_customer_credit"
-						:redeem-customer-credit="redeem_customer_credit"
+						<PaymentCustomerCreditDetails
+							:invoice-doc="invoice_doc"
+							:available-customer-credit="available_customer_credit"
+							:redeem-customer-credit="redeem_customer_credit"
 							:customer-credit-dict="customer_credit_dict"
 							:credit-source-label="creditSourceLabel"
 							:format-currency="formatCurrency"
 							:currency-symbol="currencySymbol"
-						@set-formatted-currency="
-							(data) => setFormatedCurrency(data.target, data.field, null, false, data.value)
-						"
-					/>
-				</section>
+							@set-formatted-currency="
+								(data) =>
+									setFormatedCurrency(data.target, data.field, null, false, data.value)
+							"
+						/>
+					</section>
 
-				<section class="payment-section payment-section--meta">
-					<div class="payment-section__header">
-						<h3 class="payment-section__title">{{ __("Sales Person and Print") }}</h3>
-					</div>
-					<PaymentSelectionFields
-						:sales-persons="sales_persons"
-						:sales-person="sales_person"
-						:readonly="readonly"
-						:print-formats="print_formats"
-						:print-format="print_format"
-						:show-print-format="
-							parseBooleanSetting(pos_profile?.posa_allow_select_print_format_in_payments)
-						"
-						@update:sales-person="sales_person = $event"
-						@update:print-format="print_format = $event"
-					/>
-				</section>
+					<section class="payment-section payment-section--meta">
+						<div class="payment-section__header">
+							<h3 class="payment-section__title">{{ __("Sales Person and Print") }}</h3>
+						</div>
+						<PaymentSelectionFields
+							:sales-persons="sales_persons"
+							:sales-person="sales_person"
+							:readonly="readonly"
+							:print-formats="print_formats"
+							:print-format="print_format"
+							:show-print-format="
+								parseBooleanSetting(pos_profile?.posa_allow_select_print_format_in_payments)
+							"
+							@update:sales-person="sales_person = $event"
+							@update:print-format="print_format = $event"
+						/>
+					</section>
+				</div>
 			</div>
-		</div>
 		</v-card>
 
 		<div :class="['payment-footer', { 'payment-footer--dialog': dialogMode }]">
@@ -300,7 +299,12 @@ import { usePaymentPrinting } from "../../composables/pos/payments/usePaymentPri
 import { usePaymentMethods } from "../../composables/pos/payments/usePaymentMethods";
 import { useInvoiceDetails } from "../../composables/pos/invoice/useInvoiceDetails";
 import { useFormat } from "../../format";
-import { isOffline, getCachedGiftCardSnapshot, saveGiftCardSnapshot } from "../../../offline/index";
+import {
+	isOffline,
+	getStoredCustomer,
+	getCachedGiftCardSnapshot,
+	saveGiftCardSnapshot,
+} from "../../../offline/index";
 import GiftCardDialog from "./wallet/GiftCardDialog.vue";
 import {
 	initializePaymentLinesForDialog,
@@ -325,7 +329,7 @@ import PaymentOptions from "./payments/PaymentOptions.vue";
 import PaymentSelectionFields from "./payments/PaymentSelectionFields.vue";
 import PaymentDialogs from "./payments/PaymentDialogs.vue";
 
-const props = defineProps({
+defineProps({
 	dialogMode: {
 		type: Boolean,
 		default: false,
@@ -407,6 +411,27 @@ const giftCardRedemptions = ref([]);
 const invoice_doc = computed({
 	get: () => invoiceStore.invoiceDoc || {},
 	set: (value) => invoiceStore.setInvoiceDoc(value),
+});
+
+const paymentItemDiscountTotal = computed(() => {
+	const items = Array.isArray(invoice_doc.value?.items) ? invoice_doc.value.items : [];
+
+	const total = items.reduce((sum, item) => {
+		const qty = Math.abs(flt(item?.qty || 0, currency_precision.value));
+		const explicitDiscount = Math.abs(flt(item?.discount_amount || 0, currency_precision.value));
+		const rateDiscount =
+			explicitDiscount > 0
+				? explicitDiscount
+				: Math.max(
+						flt(item?.price_list_rate || 0, currency_precision.value) -
+							flt(item?.rate || 0, currency_precision.value),
+						0,
+					);
+
+		return sum + qty * rateDiscount;
+	}, 0);
+
+	return flt(total, currency_precision.value);
 });
 
 const displayCurrency = computed(() => (invoice_doc.value ? invoice_doc.value.currency : ""));
@@ -543,7 +568,6 @@ const {
 	set_full_amount,
 	set_rest_amount,
 	request_payment,
-	autoBalancePayments,
 	getVisibleDenominations,
 	isCashLikePayment,
 } = usePaymentMethods({
@@ -631,37 +655,41 @@ const {
 	eventBus: eventBus,
 });
 
-const { ensureReturnPaymentsAreNegative, restoreReturnPayments, validateSubmission, submitInvoice } = usePaymentSubmission({
-	invoiceDoc: computed(() => invoiceStore.invoiceDoc),
-	posProfile: pos_profile,
-	stockSettings: stock_settings,
-	invoiceType: invoiceType,
-	is_write_off_change: is_write_off_change,
-	isCashback: is_cashback,
-	paidChange: paid_change,
-	creditChange: credit_change,
-	redeemedCustomerCredit: redeemed_customer_credit,
-	customerCreditDict: customer_credit_dict,
-	giftCardRedemptions: giftCardRedemptions,
-	diff_payment: diff_payment,
-	is_credit_sale: is_credit_sale,
-	loyaltyAmount: loyalty_amount,
-	formatFloat: (val, prec) => flt(val, prec),
-	stores: {
-		toastStore,
-		syncStore,
-		customersStore,
-		uiStore,
-		invoiceStore,
-	},
-	currencyPrecision: currency_precision,
-});
+const { ensureReturnPaymentsAreNegative, restoreReturnPayments, validateSubmission, submitInvoice } =
+	usePaymentSubmission({
+		invoiceDoc: computed(() => invoiceStore.invoiceDoc),
+		posProfile: pos_profile,
+		stockSettings: stock_settings,
+		invoiceType: invoiceType,
+		is_write_off_change: is_write_off_change,
+		isCashback: is_cashback,
+		paidChange: paid_change,
+		creditChange: credit_change,
+		redeemedCustomerCredit: redeemed_customer_credit,
+		customerCreditDict: customer_credit_dict,
+		giftCardRedemptions: giftCardRedemptions,
+		diff_payment: diff_payment,
+		is_credit_sale: is_credit_sale,
+		loyaltyAmount: loyalty_amount,
+		formatFloat: (val, prec) => flt(val, prec),
+		stores: {
+			toastStore,
+			syncStore,
+			customersStore,
+			uiStore,
+			invoiceStore,
+		},
+		currencyPrecision: currency_precision,
+	});
 
 const isGiftCardPayment = (payment) => {
 	if (!pos_profile.value?.posa_use_gift_cards) {
 		return false;
 	}
-	return String(payment?.mode_of_payment || "").trim().toLowerCase().includes("gift");
+	return String(payment?.mode_of_payment || "")
+		.trim()
+		.toLowerCase()
+		.includes("gift");
 };
 
 const visiblePaymentMethods = computed(() =>
@@ -705,22 +733,14 @@ const setGiftCardMode = (mode) => {
 const getGiftCardRemainingAmount = () => {
 	const flexiblePayment =
 		activeGiftCardPayment.value || resolvePreferredPaymentLine(invoice_doc.value, isCashLikePayment);
-	const payments = Array.isArray(invoice_doc.value?.payments)
-		? invoice_doc.value.payments
-		: [];
+	const payments = Array.isArray(invoice_doc.value?.payments) ? invoice_doc.value.payments : [];
 	const otherPaymentsTotal = payments.reduce((sum, payment) => {
 		if (!payment || payment === flexiblePayment) {
 			return sum;
 		}
 		return sum + flt(payment.amount || 0, currency_precision.value);
 	}, 0);
-	return Math.max(
-		flt(
-			netInvoiceSettlementAmount.value - otherPaymentsTotal,
-			currency_precision.value,
-		),
-		0,
-	);
+	return Math.max(flt(netInvoiceSettlementAmount.value - otherPaymentsTotal, currency_precision.value), 0);
 };
 
 const clearGiftCardRedemption = () => {
@@ -757,8 +777,7 @@ const toggleGiftCardInline = () => {
 const openGiftCardDialog = (payment = null) => {
 	activeGiftCardPayment.value = payment;
 	giftCardDialogOpen.value = true;
-	giftCardCode.value =
-		giftCardRedemptions.value[0]?.gift_card_code || "";
+	giftCardCode.value = giftCardRedemptions.value[0]?.gift_card_code || "";
 	giftCardAmount.value = flt(
 		giftCardRedemptions.value[0]?.amount || payment?.amount || 0,
 		currency_precision.value,
@@ -801,14 +820,10 @@ const checkGiftCardBalance = async () => {
 		giftCardStatus.value = card.status || "";
 		saveGiftCardSnapshot(giftCardCode.value, card);
 		if (!giftCardAmount.value && giftCardMode.value === "redeem") {
-			giftCardAmount.value = Math.min(
-				giftCardBalance.value,
-				getGiftCardRemainingAmount(),
-			);
+			giftCardAmount.value = Math.min(giftCardBalance.value, getGiftCardRemainingAmount());
 		}
 	} catch (error) {
-		giftCardError.value =
-			error?.message || __("Unable to load gift card balance.");
+		giftCardError.value = error?.message || __("Unable to load gift card balance.");
 	}
 	giftCardLoading.value = false;
 };
@@ -1046,9 +1061,7 @@ const finishSubmissionNavigation = (clearInvoice = false) => {
 };
 
 const buildProfilePaymentLines = () => {
-	const profilePayments = Array.isArray(pos_profile.value?.payments)
-		? pos_profile.value.payments
-		: [];
+	const profilePayments = Array.isArray(pos_profile.value?.payments) ? pos_profile.value.payments : [];
 
 	return profilePayments
 		.filter((payment) => payment?.mode_of_payment)
@@ -1058,10 +1071,7 @@ const buildProfilePaymentLines = () => {
 			base_amount: 0,
 			account: payment.account,
 			type: payment.type,
-			default:
-				payment.default === 1 || payment.default === true || index === 0
-					? 1
-					: 0,
+			default: payment.default === 1 || payment.default === true || index === 0 ? 1 : 0,
 		}));
 };
 
@@ -1106,10 +1116,7 @@ const syncPreferredPaymentToCurrentTotal = (doc = invoice_doc.value) => {
 
 	preferredPayment.amount = normalizedTotal;
 	if (preferredPayment.base_amount !== undefined) {
-		preferredPayment.base_amount = flt(
-			normalizedTotal * conversionRate,
-			currency_precision.value,
-		);
+		preferredPayment.base_amount = flt(normalizedTotal * conversionRate, currency_precision.value);
 	}
 
 	return preferredPayment;
@@ -1144,9 +1151,7 @@ const mergeProfilePaymentsIntoReturn = (doc) => {
 		doc.payments = [];
 	}
 
-	const existingModes = new Set(
-		doc.payments.map((p) => p?.mode_of_payment).filter(Boolean),
-	);
+	const existingModes = new Set(doc.payments.map((p) => p?.mode_of_payment).filter(Boolean));
 
 	profilePayments.forEach((pp) => {
 		if (!existingModes.has(pp.mode_of_payment)) {
@@ -1238,18 +1243,16 @@ const handleWriteOffAmountUpdate = (value) => {
 	let nextAmount = flt(value || 0, currency_precision.value);
 	const profileCap = writeOffProfileLimit.value;
 	const diffCap = Math.max(diff_payment.value || 0, 0);
-	const maxAmount =
-		profileCap && profileCap > 0 ? Math.min(diffCap, profileCap) : diffCap;
+	const maxAmount = profileCap && profileCap > 0 ? Math.min(diffCap, profileCap) : diffCap;
 
 	if (nextAmount < 0) {
 		nextAmount = 0;
 	}
 	if (profileCap && profileCap > 0 && nextAmount > profileCap) {
 		toastStore.show({
-			title: __(
-				"Write off amount cannot exceed the POS profile maximum of {0}",
-				[formatCurrency(profileCap)],
-			),
+			title: __("Write off amount cannot exceed the POS profile maximum of {0}", [
+				formatCurrency(profileCap),
+			]),
 			color: "error",
 		});
 		nextAmount = maxAmount;
@@ -1301,14 +1304,10 @@ const handlePaymentAmountChange = (payment, event) => {
 	if (invoice_doc.value?.is_return && payment.amount > 0) {
 		payment.amount = -payment.amount;
 	}
-	if (payment.base_amount !== undefined && invoice_doc.value?.is_return) {
+	if (payment.base_amount !== undefined) {
 		const conversion_rate = invoice_doc.value.conversion_rate || 1;
 		payment.base_amount = flt(payment.amount * conversion_rate, currency_precision.value);
 	}
-
-	nextTick(() => {
-		autoBalancePayments(payment);
-	});
 };
 
 const setPaymentToDenomination = (payment, amount) => {
@@ -1318,9 +1317,6 @@ const setPaymentToDenomination = (payment, amount) => {
 		payment.base_amount = flt(amount * conversion_rate, currency_precision.value);
 	}
 	last_payment_change_was_cash.value = isCashLikePayment(payment);
-	nextTick(() => {
-		autoBalancePayments(payment);
-	});
 };
 
 // UI Feedback Methods
@@ -1336,6 +1332,48 @@ const creditSourceLabel = (row) => {
 	const sourceLabel = row.source_type ? __(row.source_type) : null;
 	if (sourceLabel) return `${sourceLabel}: ${row.credit_origin}`;
 	return row.credit_origin;
+};
+
+const applyPaymentCustomerInfo = (info, customer) => {
+	if (!info) return;
+	const nextInfo = {
+		...info,
+		name: info.name || info.customer || customer,
+		customer: info.customer || info.name || customer,
+	};
+	customer_info.value = nextInfo;
+	customersStore.setCustomerInfo(nextInfo);
+};
+
+const refreshPaymentCustomerInfo = async (doc) => {
+	const customer = typeof doc?.customer === "string" ? doc.customer.trim() : "";
+	if (!customer) {
+		return;
+	}
+
+	const cachedCustomer = await getStoredCustomer(customer);
+	if (cachedCustomer?.name) {
+		applyPaymentCustomerInfo(cachedCustomer, customer);
+	}
+
+	if (isOffline()) {
+		return;
+	}
+
+	try {
+		const result = await frappe.call({
+			method: "posawesome.posawesome.api.customers.get_customer_info",
+			args: {
+				customer,
+				company: pos_profile.value?.company || doc.company || null,
+			},
+		});
+		if (result?.message && !result.exc) {
+			applyPaymentCustomerInfo(result.message, customer);
+		}
+	} catch (error) {
+		console.error("Failed to refresh payment customer loyalty details", error);
+	}
 };
 
 const showDiffPayment = () => {
@@ -1366,9 +1404,7 @@ const clearBackgroundStatusCheck = () => {
 const resolveSubmittedDoctype = (doctype) => {
 	if (doctype) return doctype;
 	if (invoice_doc.value?.doctype) return invoice_doc.value.doctype;
-	return pos_profile.value?.create_pos_invoice_instead_of_sales_invoice
-		? "POS Invoice"
-		: "Sales Invoice";
+	return pos_profile.value?.create_pos_invoice_instead_of_sales_invoice ? "POS Invoice" : "Sales Invoice";
 };
 
 const fetchSubmittedInvoiceDoc = async (invoiceName, doctype) => {
@@ -1515,19 +1551,12 @@ const submitInvoiceWrapper = async (print, callbackOverrides = {}, options = {})
 		await submitInvoice(print, {
 			onPrint: (doc, printOptions = {}) => {
 				if (print) {
-					if (
-						printOptions.waitForPostSubmitPayments ||
-						printOptions.waitForInvoiceProcessing
-					) {
+					if (printOptions.waitForPostSubmitPayments || printOptions.waitForInvoiceProcessing) {
 						void runDeferredPrintWorkflow({
 							name: printOptions.name || doc?.name,
 							doctype: printOptions.doctype,
-							waitForPostSubmitPayments: Boolean(
-								printOptions.waitForPostSubmitPayments,
-							),
-							waitForInvoiceProcessing: Boolean(
-								printOptions.waitForInvoiceProcessing,
-							),
+							waitForPostSubmitPayments: Boolean(printOptions.waitForPostSubmitPayments),
+							waitForInvoiceProcessing: Boolean(printOptions.waitForInvoiceProcessing),
 						});
 					} else if (isOffline()) {
 						printOfflineInvoice(doc);
@@ -1706,6 +1735,16 @@ watch(paid_change, (newVal) => {
 watch(loyalty_amount, (value) => {
 	if (!invoice_doc.value) return;
 	const amount = parseFloat(value) || 0;
+	if (amount <= 0) {
+		invoice_doc.value.loyalty_amount = 0;
+		invoice_doc.value.redeem_loyalty_points = 0;
+		invoice_doc.value.loyalty_points = 0;
+		if (flt(loyalty_amount.value) !== 0) {
+			loyalty_amount.value = 0;
+		}
+		rebalancePreferredPaymentCoverage();
+		return;
+	}
 	if (amount > available_points_amount.value + 0.001) {
 		invoice_doc.value.loyalty_amount = 0;
 		invoice_doc.value.redeem_loyalty_points = 0;
@@ -1841,10 +1880,14 @@ watch(
 	},
 );
 
-watch(customerInfo, (newInfo) => {
-	customer_info.value = newInfo || "";
-	set_print_format();
-});
+watch(
+	customerInfo,
+	(newInfo) => {
+		customer_info.value = newInfo || "";
+		set_print_format();
+	},
+	{ immediate: true },
+);
 
 watch(selectedCustomer, (newCustomer, oldCustomer) => {
 	if (newCustomer === oldCustomer) return;
@@ -1874,6 +1917,7 @@ onMounted(() => {
 	if (eventBus) {
 		eventBus.on("send_invoice_doc_payment", (doc) => {
 			invoiceStore.setInvoiceDoc(doc);
+			void refreshPaymentCustomerInfo(doc);
 			paid_change.value = flt(doc.paid_change || 0, currency_precision.value);
 			credit_change.value = flt(doc.credit_change || 0, currency_precision.value);
 			last_payment_change_was_cash.value = null;
@@ -2059,11 +2103,7 @@ onBeforeUnmount(() => {
 }
 
 .payment-section--summary {
-	background: linear-gradient(
-		180deg,
-		rgba(var(--v-theme-primary), 0.08) 0%,
-		var(--pos-surface-muted) 100%
-	);
+	background: linear-gradient(180deg, rgba(var(--v-theme-primary), 0.08) 0%, var(--pos-surface-muted) 100%);
 }
 
 .payment-section__header {
@@ -2233,7 +2273,5 @@ onBeforeUnmount(() => {
 		margin-top: 0;
 		padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
 	}
-
 }
 </style>
-

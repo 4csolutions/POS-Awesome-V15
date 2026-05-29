@@ -21,6 +21,14 @@ declare const __: (_text: string, _args?: any[]) => string;
 export function useDiscounts() {
 	const toastStore = useToastStore();
 
+	const refreshInvoiceTotals = (context: any) => {
+		if (context.invoiceStore?.triggerUpdateTotals) {
+			context.invoiceStore.triggerUpdateTotals();
+			return;
+		}
+		context.invoiceStore?.recalculateTotals?.();
+	};
+
 	/**
 	 * Captures a shallow snapshot of all price-related fields from `item`.
 	 * Used immediately before a price mutation so that `enforceOfferPriceLimits` can
@@ -545,6 +553,7 @@ export function useDiscounts() {
 
 			// Update stock calculations and force UI update
 			if (context.calc_stock_qty) context.calc_stock_qty(item, item.qty);
+			refreshInvoiceTotals(context);
 			if (context.forceUpdate) context.forceUpdate();
 		} catch (error: unknown) {
 			console.error("Error calculating prices:", error);
@@ -611,6 +620,7 @@ export function useDiscounts() {
 				context.currency_precision,
 			);
 			item.base_amount = toBaseCurrency(context, item.amount);
+			refreshInvoiceTotals(context);
 			if (context.forceUpdate) context.forceUpdate();
 			return;
 		}
@@ -621,6 +631,7 @@ export function useDiscounts() {
 				context.currency_precision,
 			);
 			item.base_amount = toBaseCurrency(context, item.amount);
+			refreshInvoiceTotals(context);
 			if (context.forceUpdate) context.forceUpdate();
 			return;
 		}
@@ -672,6 +683,7 @@ export function useDiscounts() {
 		);
 		item.base_amount = toBaseCurrency(context, item.amount);
 
+		refreshInvoiceTotals(context);
 		if (context.forceUpdate) context.forceUpdate();
 	};
 

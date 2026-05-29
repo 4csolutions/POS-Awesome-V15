@@ -176,16 +176,54 @@ export async function getStoredCustomer(customerName: string) {
 
 export async function setCustomerStorage(customers: AnyRecord[]) {
 	try {
-		const clean = customers.map((customer) => ({
-			name: customer.name,
-			customer_name: customer.customer_name,
-			mobile_no: customer.mobile_no,
-			email_id: customer.email_id,
-			primary_address: customer.primary_address,
-			tax_id: customer.tax_id,
-			stored_value_balance: customer.stored_value_balance || 0,
-			stored_value_sources: customer.stored_value_sources || 0,
-		}));
+		const existingByName = new Map<string, AnyRecord>();
+		const existingRows = Array.isArray(memory.customer_storage)
+			? memory.customer_storage
+			: [];
+		existingRows.forEach((row) => {
+			if (row?.name) {
+				existingByName.set(row.name, row);
+			}
+		});
+
+		const clean = customers.flatMap((customer, index) => {
+			const name = customer.name || customer.customer;
+			if (!name) {
+				const customerIdentifier =
+					customer.id ?? customer.customerId ?? customer.customer_id ?? `row:${index}`;
+				console.warn(
+					"Skipping customer cache row without a name",
+					{ customerIdentifier },
+				);
+				return [];
+			}
+			const existing = name ? existingByName.get(name) : null;
+			return [
+				{
+					...customer,
+					name,
+					customer_name:
+						customer.customer_name || customer.name || customer.customer,
+					mobile_no: customer.mobile_no,
+					email_id: customer.email_id,
+					primary_address: customer.primary_address,
+					tax_id: customer.tax_id,
+					loyalty_program: customer.loyalty_program,
+					loyalty_points:
+						customer.loyalty_points !== undefined
+							? customer.loyalty_points
+							: existing?.loyalty_points,
+					conversion_factor:
+						customer.conversion_factor !== undefined
+							? customer.conversion_factor
+							: existing?.conversion_factor,
+					stored_value_balance:
+						customer.stored_value_balance ?? existing?.stored_value_balance ?? 0,
+					stored_value_sources:
+						customer.stored_value_sources ?? existing?.stored_value_sources ?? 0,
+				},
+			];
+		});
 
 		await db.table("customers").bulkPut(clean);
 		memory.customer_storage = mergeCustomerStorageRows(clean);
@@ -323,11 +361,12 @@ export function clearGiftCardSnapshotCache() {
 	}
 }
 
-export function saveCustomerBalance(customer: string, balance: number) {
+export function saveCustomerBalance(customer: string, balance: number, currency?: string) {
 	try {
 		const cache = memory.customer_balance_cache;
 		cache[customer] = {
 			balance,
+			currency: currency || undefined,
 			timestamp: Date.now(),
 		};
 		memory.customer_balance_cache = cache;
@@ -344,7 +383,7 @@ export function getCachedCustomerBalance(customer: string) {
 		if (cachedData) {
 			const isValid =
 				Date.now() - cachedData.timestamp < 24 * 60 * 60 * 1000;
-			return isValid ? cachedData.balance : null;
+			return isValid ? cachedData : null;
 		}
 		return null;
 	} catch (error) {

@@ -15,6 +15,17 @@ export interface Item {
   brand?: string;
   serial_no?: string | null;
   batch_no?: string | null;
+  actual_qty?: number | null;
+  rate?: number;
+  price_list_rate?: number;
+  original_rate?: number;
+  currency?: string;
+  original_currency?: string;
+  item_uoms?: Array<Record<string, any>>;
+  serial_no_data?: Array<Record<string, any>>;
+  batch_no_data?: Array<Record<string, any>>;
+  _scale_qty?: number;
+  _scale_price?: number;
   /** 1 if the item tracks serial numbers, 0 otherwise. */
   has_serial_no?: number;
   /** 1 if the item tracks batch numbers, 0 otherwise. */
@@ -28,7 +39,7 @@ export interface Item {
 /**
  * An {@link Item} that has been added to the active invoice.
  * Carries per-line pricing and discount state alongside the item's catalogue data.
- * `posa_row_id` is the stable row key used by {@link useInvoiceStore} — it is NOT the
+ * `posa_row_id` is the stable row key used by `useInvoiceStore` — it is NOT the
  * ERPNext `name` field and is generated client-side.
  */
 export interface CartItem extends Item {
@@ -51,7 +62,7 @@ export interface CartItem extends Item {
 
 /**
  * The active POS Invoice document, mirroring the ERPNext POS Invoice doctype.
- * This is the root object managed by {@link useInvoiceStore}.
+ * This is the root object managed by `useInvoiceStore`.
  * Return invoices use negative `qty` and negative totals throughout.
  */
 export interface InvoiceDoc {
@@ -82,6 +93,13 @@ export interface InvoiceDoc {
   [key: string]: any;
 }
 
+export interface InvoiceDocRef {
+  name?: string;
+  doctype?: string;
+}
+
+export type PartialInvoiceDoc = Partial<InvoiceDoc> & InvoiceDocRef;
+
 /**
  * A single payment line on an invoice (e.g. Cash, Card, Loyalty Points).
  */
@@ -91,6 +109,10 @@ export interface Payment {
   amount: number;
   account?: string;
   type?: string;
+  base_amount?: number;
+  default?: boolean;
+  currency?: string;
+  conversion_rate?: number;
   [key: string]: any;
 }
 
@@ -138,6 +160,21 @@ export interface Customer {
   primary_address?: string;
   [key: string]: any;
 }
+
+export interface CustomerSummary {
+  name: string;
+  customer_name: string;
+  email_id?: string;
+  mobile_no?: string;
+  primary_address?: string;
+  [key: string]: any;
+}
+
+export interface StoredCustomer extends CustomerSummary {
+  tax_id?: string;
+}
+
+export type CustomerInfo = Record<string, unknown>;
 
 /**
  * Internal versioning metadata attached to the invoice store.

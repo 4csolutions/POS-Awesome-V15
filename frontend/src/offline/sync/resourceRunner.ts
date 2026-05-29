@@ -7,6 +7,7 @@ import {
 	syncPriceListMetaResource,
 	syncStockResource,
 } from "./adapters";
+import { syncInvoiceOutboxResource } from "../invoiceOutbox";
 import type { SyncScopedProfile } from "./adapters/common";
 import type {
 	SyncResourceDefinition,
@@ -23,6 +24,7 @@ const SUPPORTED_OFFLINE_SYNC_RESOURCE_IDS = new Set<SyncResourceId>([
 	"item_prices",
 	"stock",
 	"customers",
+	"invoice_outbox",
 ]);
 
 type SupportedSyncProfile = SyncScopedProfile & {
@@ -32,8 +34,8 @@ type SupportedSyncProfile = SyncScopedProfile & {
 };
 
 type CallOfflineSyncMethod = (
-	method: string,
-	args?: Record<string, any>,
+	_method: string,
+	_args?: Record<string, any>,
 ) => Promise<any>;
 
 type RunSupportedOfflineSyncResourceArgs = {
@@ -41,17 +43,13 @@ type RunSupportedOfflineSyncResourceArgs = {
 	posProfile: SupportedSyncProfile;
 	schemaVersion: string;
 	getPersistedState: (
-		resourceId: SyncResourceId,
+		_resourceId: SyncResourceId,
 	) => Promise<SyncResourceState | null>;
-	getRuntimeState?: (
-		resourceId: SyncResourceId,
-	) => SyncResourceState | null;
+	getRuntimeState?: (_resourceId: SyncResourceId) => SyncResourceState | null;
 	callOfflineSyncMethod: CallOfflineSyncMethod;
 };
 
-function getPersistedWatermark(
-	state: SyncResourceState | null | undefined,
-) {
+function getPersistedWatermark(state: SyncResourceState | null | undefined) {
 	return state?.watermark || null;
 }
 
@@ -105,7 +103,9 @@ export function filterSupportedOfflineSyncStates(
 	);
 }
 
-export function buildOfflineSyncProfile(profile: any): SupportedSyncProfile | null {
+export function buildOfflineSyncProfile(
+	profile: any,
+): SupportedSyncProfile | null {
 	if (!profile?.name) {
 		return null;
 	}
@@ -238,16 +238,20 @@ export async function runSupportedOfflineSyncResource({
 		case "customers":
 			return syncCustomersResource({
 				...sharedArgs,
-				fetcher: ({ posProfile, watermark, schemaVersion }) =>
+				fetcher: ({ posProfile, watermark, startAfter, limit, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.customers.sync_customers",
 						{
 							pos_profile: posProfile,
 							watermark,
+							start_after: startAfter || null,
+							limit: limit || null,
 							schema_version: schemaVersion,
 						},
 					),
 			});
+		case "invoice_outbox":
+			return syncInvoiceOutboxResource(callOfflineSyncMethod);
 		default:
 			return {
 				status: "idle",

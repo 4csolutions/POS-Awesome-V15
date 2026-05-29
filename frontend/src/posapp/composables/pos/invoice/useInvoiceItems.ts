@@ -209,7 +209,8 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 	const shouldEnforceStockLimits = (item: any) => {
 		if (
 			pos_profile.value &&
-			!parseBooleanSetting(pos_profile.value.posa_validate_stock)
+			!parseBooleanSetting(pos_profile.value.posa_validate_stock) &&
+			!blockSaleBeyondAvailableQty.value
 		) {
 			return false;
 		}
@@ -223,6 +224,74 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 			return false;
 		}
 		return true;
+	};
+
+	const resolveItemMaxQty = (item: any) => {
+		if (!item || item.is_stock_item === 0 || item.is_stock_item === false) {
+			return undefined;
+		}
+		if (item.max_qty !== undefined && Number.isFinite(Number(item.max_qty))) {
+			return flt(Number(item.max_qty), null);
+		}
+
+		const baseQty = Number(
+			item._base_actual_qty ??
+				item._base_available_qty ??
+				item.actual_qty ??
+				item.available_qty,
+		);
+		if (!Number.isFinite(baseQty)) {
+			return undefined;
+		}
+
+		const conversionFactor = Number(item.conversion_factor || 1) || 1;
+		const maxQty = flt(baseQty / conversionFactor, null);
+		item.max_qty = maxQty;
+		return maxQty;
+	};
+
+	const refreshQuantityLimitState = (item: any) => {
+		if (!item) return;
+		if (item.is_stock_item === 0 || item.is_stock_item === false) {
+			item.disable_increment = false;
+			return;
+		}
+
+		const maxQty = resolveItemMaxQty(item);
+		const allowNegativeStock =
+			(parseBooleanSetting(stock_settings.value?.allow_negative_stock) ||
+				parseBooleanSetting(item?.allow_negative_stock)) &&
+			!blockSaleBeyondAvailableQty.value;
+
+		if (allowNegativeStock || maxQty === undefined) {
+			item.disable_increment = false;
+			return;
+		}
+
+		const enforceStockLimits = shouldEnforceStockLimits(item);
+		item.disable_increment =
+			enforceStockLimits && flt(item.qty, null) >= flt(maxQty, null);
+	};
+
+	const syncLineAmounts = (item: any) => {
+		if (!item) return;
+		const qty = Number.parseFloat(String(item.qty ?? 0)) || 0;
+		const rate = Number.parseFloat(String(item.rate ?? 0)) || 0;
+		const baseRate =
+			Number.parseFloat(String(item.base_rate ?? item.rate ?? 0)) || 0;
+		item.amount = flt(qty * rate, null);
+		item.base_amount = flt(qty * baseRate, null);
+	};
+
+	const notifyCartLineChanged = () => {
+		if (typeof invoiceStore.recalculateTotals === "function") {
+			invoiceStore.recalculateTotals();
+		} else if (typeof invoiceStore.triggerUpdateTotals === "function") {
+			invoiceStore.triggerUpdateTotals();
+		}
+		if (typeof invoiceStore.touch === "function") {
+			invoiceStore.touch();
+		}
 	};
 
 	const setFormatedQty = (
@@ -272,33 +341,27 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 			(parseBooleanSetting(stock_settings.value?.allow_negative_stock) ||
 				parseBooleanSetting(item?.allow_negative_stock)) &&
 			!blockSaleBeyondAvailableQty.value;
+		const maxQty =
+			field_name === "qty" && enforceStockLimits
+				? resolveItemMaxQty(item)
+				: item.max_qty;
 
 		if (
 			enforceStockLimits &&
-			item.max_qty !== undefined &&
+			maxQty !== undefined &&
+			!allowNegativeStock &&
 			flt(item[field_name], effectivePrecision) >
-				flt(item.max_qty, effectivePrecision)
+				flt(maxQty, effectivePrecision)
 		) {
-			const blockSale =
-				blockSaleBeyondAvailableQty.value || !allowNegativeStock;
-			if (blockSale) {
-				item[field_name] = item.max_qty;
-				parsedValue = item.max_qty;
-				toastStore.show({
-					title: __(
-						"Maximum available quantity is {0}. Quantity adjusted to match stock.",
-						[formatFloat(item.max_qty, effectivePrecision)],
-					),
-					color: "error",
-				});
-			} else {
-				toastStore.show({
-					title: __(
-						"Stock is lower than requested. Proceeding may create negative stock.",
-					),
-					color: "warning",
-				});
-			}
+			item[field_name] = maxQty;
+			parsedValue = maxQty;
+			toastStore.show({
+				title: __(
+					"Maximum available quantity is {0}. Quantity adjusted to match stock.",
+					[formatFloat(maxQty, effectivePrecision)],
+				),
+				color: "error",
+			});
 		}
 
 		if (isReturnInvoice.value && parsedValue > 0) {
@@ -306,12 +369,18 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 			item[field_name] = parsedValue;
 		}
 
+		if (field_name === "qty") {
+			refreshQuantityLimitState(item);
+		}
+
 		if (typeof calc_stock_qty === "function")
 			calc_stock_qty(item, item[field_name]);
 		if (field_name === "qty") updateBundleChildrenQty(item);
 
 		if (field_name === "qty") {
+			syncLineAmounts(item);
 			bus.emit("apply_pricing_rules");
+			notifyCartLineChanged();
 		}
 
 		return parsedValue;

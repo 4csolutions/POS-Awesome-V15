@@ -94,6 +94,9 @@ describe("offline storage ownership", () => {
 			{
 				name: "CUST-1",
 				customer_name: "Customer 1",
+				loyalty_program: "Retail Loyalty",
+				loyalty_points: 2,
+				conversion_factor: 5,
 				stored_value_balance: 10,
 			},
 		]);
@@ -102,6 +105,9 @@ describe("offline storage ownership", () => {
 			expect.objectContaining({
 				name: "CUST-1",
 				customer_name: "Customer 1",
+				loyalty_program: "Retail Loyalty",
+				loyalty_points: 2,
+				conversion_factor: 5,
 				stored_value_balance: 10,
 			}),
 		]);
@@ -111,14 +117,84 @@ describe("offline storage ownership", () => {
 		customersTable.get.mockResolvedValueOnce({
 			name: "CUST-1",
 			customer_name: "Customer 1",
+			loyalty_points: 2,
+			conversion_factor: 5,
 			stored_value_balance: 10,
 		});
 
 		expect(await getStoredCustomer("CUST-1")).toEqual(
 			expect.objectContaining({
 				name: "CUST-1",
+				loyalty_points: 2,
+				conversion_factor: 5,
 				stored_value_balance: 10,
 			}),
 		);
+	});
+
+	it("preserves cached active-customer loyalty details during summary sync", async () => {
+		const { setCustomerStorage } = await import("../src/offline/customers");
+		const { memory } = await import("../src/offline/db");
+
+		memory.customer_storage = [
+			{
+				name: "CUST-1",
+				customer_name: "Customer 1",
+				loyalty_program: "Retail Loyalty",
+				loyalty_points: 12,
+				conversion_factor: 5,
+			},
+		];
+
+		await setCustomerStorage([
+			{
+				name: "CUST-1",
+				customer_name: "Customer 1",
+				loyalty_program: "Retail Loyalty",
+			},
+		]);
+
+		expect(customersTable.bulkPut).toHaveBeenCalledWith([
+			expect.objectContaining({
+				name: "CUST-1",
+				loyalty_program: "Retail Loyalty",
+				loyalty_points: 12,
+				conversion_factor: 5,
+			}),
+		]);
+		expect(memory.customer_storage[0]).toEqual(
+			expect.objectContaining({
+				name: "CUST-1",
+				loyalty_points: 12,
+				conversion_factor: 5,
+			}),
+		);
+	});
+
+	it("skips customer cache rows without a resolvable name", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const { setCustomerStorage } = await import("../src/offline/customers");
+
+		await setCustomerStorage([
+			{
+				customer_name: "Missing Identifier",
+			},
+			{
+				customer: "CUST-2",
+				customer_name: "Customer 2",
+			},
+		]);
+
+		expect(customersTable.bulkPut).toHaveBeenCalledWith([
+			expect.objectContaining({
+				name: "CUST-2",
+				customer_name: "Customer 2",
+			}),
+		]);
+		expect(warnSpy).toHaveBeenCalledWith(
+			"Skipping customer cache row without a name",
+			{ customerIdentifier: "row:0" },
+		);
+		warnSpy.mockRestore();
 	});
 });

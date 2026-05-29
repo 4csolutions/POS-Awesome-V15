@@ -133,6 +133,9 @@ describe("stored value UX", () => {
 			{
 				name: "CUST-002",
 				customer_name: "Stored Value Customer",
+				loyalty_program: "Retail Loyalty",
+				loyalty_points: 2,
+				conversion_factor: 10,
 				stored_value_balance: 85,
 				stored_value_sources: 2,
 			},
@@ -142,6 +145,9 @@ describe("stored value UX", () => {
 
 		expect(customer?.stored_value_balance).toBe(85);
 		expect(customer?.stored_value_sources).toBe(2);
+		expect(customer?.loyalty_program).toBe("Retail Loyalty");
+		expect(customer?.loyalty_points).toBe(2);
+		expect(customer?.conversion_factor).toBe(10);
 	});
 
 	it("adds replay-safe customer balance metadata to offline invoices", async () => {

@@ -29,6 +29,7 @@ export * from "./db";
 export * from "./writeQueue";
 export * from "./stock";
 export * from "./invoices";
+export * from "./invoiceOutbox";
 export * from "./customers";
 export * from "./patients";
 export * from "./payments";

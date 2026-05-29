@@ -12,6 +12,8 @@ import {
 	saveItemGroups,
 	getCachedItemGroups,
 	refreshBootstrapSnapshotFromCacheState,
+	updateLocalStockCache,
+	setStockCacheReady,
 } from "../../../../../offline/index";
 
 export interface BackgroundSyncState {
@@ -19,10 +21,21 @@ export interface BackgroundSyncState {
 	token: number;
 }
 
+const hasStockQuantity = (item: Item) =>
+	item && Object.prototype.hasOwnProperty.call(item, "actual_qty");
+
+const containsStockQuantities = (items: Item[]) =>
+	Array.isArray(items) && items.some(hasStockQuantity);
+
+const DELTA_SYNC_LIMIT = 1000;
+const BACKGROUND_SYNC_PAGE_SIZE = 1000;
+const BACKGROUND_PAGINATION_REFRESH_BATCHES = 5;
+
 export function useItemsSync() {
 	const isLoading = ref(false);
 	const isBackgroundLoading = ref(false);
 	const loadProgress = ref(0);
+	const syncedItemsCount = ref(0);
 	const requestToken = ref(0);
 	const abortControllers = ref(new Map<string, AbortController>());
 	const backgroundSyncState = ref<BackgroundSyncState>({
@@ -48,7 +61,7 @@ export function useItemsSync() {
 				saveItemGroups(groups);
 			} else {
 				// Fallback to API
-				const response = await itemService.getItemGroups();
+				const response = await itemService.getItemGroupsData();
 
 				if (response) {
 					const groups = ["ALL"];
@@ -101,12 +114,16 @@ export function useItemsSync() {
 		posProfile: POSProfile | null,
 		activePriceList: string,
 	) => {
-		if (!Array.isArray(itemList) || itemList.length === 0 || !posProfile?.name) {
+		if (
+			!Array.isArray(itemList) ||
+			itemList.length === 0 ||
+			!posProfile?.name
+		) {
 			return;
 		}
 
-		const detailItems = itemList.filter(
-			(item): item is Item => Boolean(item?.item_code),
+		const detailItems = itemList.filter((item): item is Item =>
+			Boolean(item?.item_code),
 		);
 		if (!detailItems.length) {
 			return;
@@ -129,6 +146,8 @@ export function useItemsSync() {
 		backgroundSyncState.value.token += 1;
 		backgroundSyncState.value.running = false;
 		isBackgroundLoading.value = false;
+		loadProgress.value = 0;
+		syncedItemsCount.value = 0;
 	};
 
 	const refreshModifiedItems = async (
@@ -151,7 +170,7 @@ export function useItemsSync() {
 					price_list: activePriceList,
 					customer,
 					modified_after: lastSync,
-					limit: 500,
+					limit: DELTA_SYNC_LIMIT,
 				},
 				freeze: false,
 			});
@@ -230,25 +249,45 @@ export function useItemsSync() {
 		const token = ++backgroundSyncState.value.token;
 		backgroundSyncState.value.running = true;
 		isBackgroundLoading.value = true;
+		loadProgress.value = 0;
+		syncedItemsCount.value = 0;
 
 		const appended: Item[] = [];
-		const DEFAULT_PAGE_SIZE = 200;
+		const bootstrapCount = Array.isArray(initialBatch)
+			? initialBatch.length
+			: items.value.length;
+		let stockCacheReady = false;
+		let batchesSincePaginationRefresh = 0;
+		const remainingCatalogEstimate =
+			totalItemCount.value > bootstrapCount
+				? totalItemCount.value - bootstrapCount
+				: 0;
 
 		try {
 			if (reset) {
 				await clearStoredItems(scope);
 				if (Array.isArray(initialBatch) && initialBatch.length) {
 					await saveItemsBulk(initialBatch, scope);
+					if (containsStockQuantities(initialBatch)) {
+						updateLocalStockCache(initialBatch);
+						stockCacheReady = true;
+					}
 					await updateCachedPaginationFromStorage();
+				}
+			} else if (Array.isArray(initialBatch) && initialBatch.length) {
+				if (containsStockQuantities(initialBatch)) {
+					updateLocalStockCache(initialBatch);
+					stockCacheReady = true;
 				}
 			}
 
 			let loaded = items.value.length;
+			let syncedCount = 0;
 			let lastItemName = items.value.length
 				? items.value[items.value.length - 1]?.item_name || null
 				: null;
 
-			const limit = resolvePageSize(DEFAULT_PAGE_SIZE);
+			const limit = resolvePageSize(BACKGROUND_SYNC_PAGE_SIZE);
 
 			while (
 				backgroundSyncState.value.token === token &&
@@ -288,25 +327,42 @@ export function useItemsSync() {
 				}
 
 				primeItemDetailsCache(batch, posProfile, activePriceList);
+				if (containsStockQuantities(batch)) {
+					updateLocalStockCache(batch);
+					stockCacheReady = true;
+				}
 				await saveItemsBulk(batch, scope);
 				setItems(batch, { append: true });
 				appended.push(...batch);
 				loaded += batch.length;
+				syncedCount += batch.length;
+				syncedItemsCount.value = syncedCount;
 				lastItemName =
 					batch[batch.length - 1]?.item_name || lastItemName;
+				batchesSincePaginationRefresh += 1;
 
-				await updateCachedPaginationFromStorage();
-
-				if (totalItemCount.value > 0) {
+				if (remainingCatalogEstimate > 0) {
 					loadProgress.value = Math.min(
 						99,
-						Math.round((loaded / totalItemCount.value) * 100),
+						Math.round(
+							(syncedCount / remainingCatalogEstimate) * 100,
+						),
 					);
-				} else if (loaded > 0) {
+				} else if (syncedCount > 0) {
 					loadProgress.value = Math.min(
 						99,
-						Math.round((loaded / (loaded + limit)) * 100),
+						Math.round((syncedCount / (syncedCount + limit)) * 100),
 					);
+				}
+
+				const reachedEnd = batch.length < limit;
+				if (
+					reachedEnd ||
+					batchesSincePaginationRefresh >=
+						BACKGROUND_PAGINATION_REFRESH_BATCHES
+				) {
+					await updateCachedPaginationFromStorage();
+					batchesSincePaginationRefresh = 0;
 				}
 
 				if (batch.length < limit) {
@@ -319,9 +375,16 @@ export function useItemsSync() {
 				itemsLoaded.value = true;
 				await updateCachedPaginationFromStorage();
 				setItemsLastSync(new Date().toISOString());
-				refreshBootstrapSnapshotFromCacheState({
+				if (stockCacheReady) {
+					setStockCacheReady(true);
+				}
+				const snapshotState: Record<string, unknown> = {
 					itemsCount: loaded,
-				});
+				};
+				if (stockCacheReady) {
+					snapshotState.stockCacheReady = true;
+				}
+				refreshBootstrapSnapshotFromCacheState(snapshotState);
 			}
 
 			return appended;
@@ -340,6 +403,7 @@ export function useItemsSync() {
 		isLoading,
 		isBackgroundLoading,
 		loadProgress,
+		syncedItemsCount,
 		requestToken,
 		abortControllers,
 		backgroundSyncState,
