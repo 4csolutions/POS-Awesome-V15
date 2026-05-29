@@ -640,7 +640,7 @@ export function get_invoice_items(context: any) {
 		items_list.push(new_item);
 	});
 
-	return items_list;
+	return items_list.reverse();
 }
 
 export function get_order_items(context: any) {
@@ -676,7 +676,7 @@ export function get_order_items(context: any) {
 		items_list.push(new_item);
 	});
 
-	return items_list;
+	return items_list.reverse();
 }
 
 export function get_payments(context: any) {

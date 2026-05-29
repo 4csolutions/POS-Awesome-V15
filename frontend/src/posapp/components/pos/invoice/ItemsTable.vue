@@ -9,7 +9,7 @@
 		@dragenter="onDragEnterFromSelector"
 		@dragleave="onDragLeaveFromSelector"
 	>
-		<v-data-table-virtual
+		<v-data-table
 			:headers="responsiveHeaders"
 			:items="items"
 			:expanded="expanded"
@@ -17,9 +17,7 @@
 			item-value="posa_row_id"
 			class="posa-cart-table elevation-2 pos-themed-card"
 			:class="tableClasses"
-			:items-per-page="virtualScrollConfig.itemsPerPage"
-			:item-height="virtualScrollConfig.itemHeight"
-			:buffer-size="virtualScrollConfig.bufferSize"
+			:items-per-page="-1"
 			expand-on-click
 			fixed-header
 			:density="tableDensity"
@@ -99,7 +97,7 @@
 					@qty-change="handleQtyChange"
 				/>
 			</template>
-		</v-data-table-virtual>
+		</v-data-table>
 
 		<!-- Edit name dialog -->
 		<v-dialog v-model="editNameDialog" max-width="400">

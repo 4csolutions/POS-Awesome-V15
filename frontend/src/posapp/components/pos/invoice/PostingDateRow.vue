@@ -71,9 +71,9 @@
 					/>
 
 					<v-tooltip
-						v-else-if="isNegative"
+						v-else-if="isRed"
 						location="bottom"
-						:text="__('Account is overdrawn')"
+						:text="__('Outstanding balance')"
 					>
 						<template #activator="{ props: tooltipProps }">
 							<v-chip
@@ -138,7 +138,7 @@ const showBalance = computed(() => !!props.pos_profile?.posa_show_customer_balan
 const placeholderText = computed(() => __("Posting Date"));
 const priceListLabel = computed(() => __("Price List"));
 
-const isNegative = computed(() => (props.customer_balance ?? 0) < 0);
+const isRed = computed(() => (props.customer_balance ?? 0) > 0);
 const formattedBalance = computed(() => {
 	return props.formatCurrency(props.customer_balance, props.customer_balance_currency);
 });

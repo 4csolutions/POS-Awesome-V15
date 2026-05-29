@@ -262,7 +262,7 @@
 								>
 								<template #item.paid_amount="{ item }"
 									>{{ currencySymbol(item.currency) }}
-									{{ formatCurrency(item.paid_amount || 0) }}</template
+									{{ formatCurrency(getRealPaidAmount(item)) }}</template
 								>
 								<template #item.change_amount="{ item }"
 									>{{ currencySymbol(item.currency) }}
@@ -394,7 +394,7 @@
 												<div class="meta-pair__label">{{ __("Tendered") }}</div>
 												<div class="meta-pair__value meta-pair__value--success">
 													{{ currencySymbol(invoice.currency) }}
-													{{ formatCurrency(invoice.paid_amount || 0) }}
+													{{ formatCurrency(getRealPaidAmount(invoice)) }}
 												</div>
 											</div>
 											<div class="meta-pair">
@@ -1064,6 +1064,28 @@
 								/>
 							</div>
 
+							<div class="summary-grid mb-4">
+								<div class="summary-tile summary-tile--history">
+									<div class="summary-tile__label">{{ __("Total Invoices") }}</div>
+									<div class="summary-tile__value">
+										{{ filteredReturnInvoices.length }}
+									</div>
+									<div class="summary-tile__meta">
+										{{ __("Total return invoices in this range") }}
+									</div>
+								</div>
+								<div class="summary-tile summary-tile--danger">
+									<div class="summary-tile__label">{{ __("Total Return Value") }}</div>
+									<div class="summary-tile__value">
+										{{ currencySymbol(posProfile?.currency) }}
+										{{ formatCurrency(returnTotals.total_value) }}
+									</div>
+									<div class="summary-tile__meta">
+										{{ __("Sum of return values in this range") }}
+									</div>
+								</div>
+							</div>
+
 							<div v-if="loading && activeTab === 'returns'" class="tab-loader">
 								<v-progress-circular indeterminate color="error" size="28" width="3" />
 								<span>{{ __("Loading return invoices...") }}</span>
@@ -1672,12 +1694,21 @@ export default {
 			return this.filteredHistoryInvoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.gross += Number(invoice.grand_total || 0);
-					accumulator.paid += Number(invoice.paid_amount || 0);
+					accumulator.paid += this.getRealPaidAmount(invoice);
 					accumulator.change_return += Number(invoice.change_amount || 0);
 					accumulator.outstanding += Number(invoice.outstanding_amount || 0);
 					return accumulator;
 				},
 				{ gross: 0, paid: 0, change_return: 0, outstanding: 0 },
+			);
+		},
+		returnTotals() {
+			return this.filteredReturnInvoices.reduce(
+				(accumulator, invoice) => {
+					accumulator.total_value += Math.abs(Number(invoice.grand_total || 0));
+					return accumulator;
+				},
+				{ total_value: 0 },
 			);
 		},
 		unpaidStatusCounts() {
@@ -1782,6 +1813,12 @@ export default {
 		},
 	},
 	methods: {
+		getRealPaidAmount(invoice) {
+			const paid = Number(invoice?.paid_amount || 0);
+			const grandTotal = Number(invoice?.grand_total || 0);
+			const outstanding = Number(invoice?.outstanding_amount || 0);
+			return paid + Math.max(0, (grandTotal - paid) - outstanding);
+		},
 		resetPagination() {
 			this.tabPages = {
 				history: 1,
@@ -2130,7 +2167,7 @@ export default {
 		paymentProgress(invoice) {
 			const grandTotal = Number(invoice?.grand_total || 0);
 			if (!grandTotal) return 0;
-			return Math.max(0, Math.min(100, (Number(invoice?.paid_amount || 0) / grandTotal) * 100));
+			return Math.max(0, Math.min(100, (this.getRealPaidAmount(invoice) / grandTotal) * 100));
 		},
 		changeAllocationRepairState(invoice) {
 			const matchesRepairPattern =
