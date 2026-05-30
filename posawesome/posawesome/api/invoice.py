@@ -18,6 +18,16 @@ SUBMISSION_LEDGER_DOCTYPE = "POS Invoice Submission Ledger"
 
 
 def validate(doc, method):
+    # Clear client request ID if it belongs to another document (e.g. during Cancel & Amend or Duplication)
+    if getattr(doc, "posa_client_request_id", None):
+        existing_name = frappe.db.get_value(
+            doc.doctype,
+            {"posa_client_request_id": doc.posa_client_request_id},
+            "name"
+        )
+        if existing_name and existing_name != doc.name:
+            doc.posa_client_request_id = None
+
     validate_shift(doc)
     set_patient(doc)
     auto_set_delivery_charges(doc)
