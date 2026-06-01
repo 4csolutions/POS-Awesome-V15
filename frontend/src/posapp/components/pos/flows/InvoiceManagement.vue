@@ -1477,95 +1477,105 @@ export default {
 			invoiceManagementDialogMaxWidth,
 		};
 	},
-	data: () => ({
-		activeTab: "history",
-		viewMode: "card",
-		loading: false,
-		pageSize: TAB_PAGE_SIZE,
-		tabPages: {
-			history: 1,
-			partial: 1,
-			drafts: 1,
-			returns: 1,
-		},
-		partialSearch: "",
-		partialStatus: "All",
-		partialDateFrom: "",
-		partialDateTo: "",
-		historySearch: "",
-		historyStatus: "All",
-		historyDateFrom: "",
-		historyDateTo: "",
-		historyShowRepairCandidatesOnly: false,
-		repairCandidateInvoiceNames: [],
-		repairedChangeAllocationInvoiceNames: [],
-		repairCandidateScopeReady: false,
-		selectedSupervisorPosProfile: null,
-		supervisorPosProfiles: [],
-		suppressSupervisorProfileRefresh: false,
-		draftSearch: "",
-		draftDateFrom: "",
-		draftDateTo: "",
-		draftSource: "invoice",
-		returnSearch: "",
-		returnDateFrom: "",
-		returnDateTo: "",
-		unpaidInvoices: [],
-		historyInvoices: [],
-		draftRecordsBySource: {
-			invoice: [],
-			order: [],
-			quote: [],
-			delivery: [],
-		},
-		repairChangeLoading: false,
-		detailDialog: false,
-		selectedInvoiceDetail: null,
-		partialStatusItems: ["All", "Partly Paid", "Unpaid", "Overdue"],
-		historyStatusItems: ["All", "Paid", "Partly Paid", "Unpaid", "Overdue", "Credit Note Issued"],
-		partialHeaders: [
-			{ title: __("Invoice"), key: "name" },
-			{ title: __("Customer"), key: "customer_name" },
-			{ title: __("Posting"), key: "posting_date" },
-			{ title: __("Due Date"), key: "due_date" },
-			{ title: __("Status"), key: "status" },
-			{ title: __("Total"), key: "grand_total", align: "end" },
-			{ title: __("Paid"), key: "paid_amount", align: "end" },
-			{ title: __("Outstanding"), key: "outstanding_amount", align: "end" },
-			{ title: __("Actions"), key: "actions", align: "end", sortable: false },
-		],
-		historyHeaders: [
-			{ title: __("Invoice"), key: "name" },
-			{ title: __("Customer"), key: "customer_name" },
-			{ title: __("Posting"), key: "posting_date" },
-			{ title: __("Status"), key: "status" },
-			{ title: __("Total"), key: "grand_total", align: "end" },
-			{ title: __("Tendered"), key: "paid_amount", align: "end" },
-			{ title: __("Change Return"), key: "change_amount", align: "end" },
-			{ title: __("Outstanding"), key: "outstanding_amount", align: "end" },
-			{ title: __("Actions"), key: "actions", align: "end", sortable: false },
-		],
-		returnHeaders: [
-			{ title: __("Invoice"), key: "name" },
-			{ title: __("Customer"), key: "customer_name" },
-			{ title: __("Posting"), key: "posting_date" },
-			{ title: __("Against"), key: "return_against" },
-			{ title: __("Total"), key: "grand_total", align: "end" },
-			{ title: __("Actions"), key: "actions", align: "end", sortable: false },
-		],
-		detailHeaders: [
-			{ title: __("Item"), key: "item_name" },
-			{ title: __("Code"), key: "item_code" },
-			{ title: __("Qty"), key: "qty", align: "end" },
-			{ title: __("Rate"), key: "rate", align: "end" },
-			{ title: __("Amount"), key: "amount", align: "end" },
-		],
-		paymentHeaders: [
-			{ title: __("Mode"), key: "mode_of_payment" },
-			{ title: __("Amount"), key: "amount", align: "end" },
-			{ title: __("Account"), key: "account" },
-		],
-	}),
+	data: () => {
+		const today = window.frappe?.datetime?.get_today() || new Date().toISOString().slice(0, 10);
+		const lastMonthFirstDay = (() => {
+			const d = new Date(today);
+			d.setMonth(d.getMonth() - 1);
+			d.setDate(1);
+			return d.toISOString().slice(0, 10);
+		})();
+
+		return {
+			activeTab: "history",
+			viewMode: "card",
+			loading: false,
+			pageSize: TAB_PAGE_SIZE,
+			tabPages: {
+				history: 1,
+				partial: 1,
+				drafts: 1,
+				returns: 1,
+			},
+			partialSearch: "",
+			partialStatus: "All",
+			partialDateFrom: lastMonthFirstDay,
+			partialDateTo: today,
+			historySearch: "",
+			historyStatus: "All",
+			historyDateFrom: lastMonthFirstDay,
+			historyDateTo: today,
+			historyShowRepairCandidatesOnly: false,
+			repairCandidateInvoiceNames: [],
+			repairedChangeAllocationInvoiceNames: [],
+			repairCandidateScopeReady: false,
+			selectedSupervisorPosProfile: null,
+			supervisorPosProfiles: [],
+			suppressSupervisorProfileRefresh: false,
+			draftSearch: "",
+			draftDateFrom: "",
+			draftDateTo: "",
+			draftSource: "invoice",
+			returnSearch: "",
+			returnDateFrom: lastMonthFirstDay,
+			returnDateTo: today,
+			unpaidInvoices: [],
+			historyInvoices: [],
+			draftRecordsBySource: {
+				invoice: [],
+				order: [],
+				quote: [],
+				delivery: [],
+			},
+			repairChangeLoading: false,
+			detailDialog: false,
+			selectedInvoiceDetail: null,
+			partialStatusItems: ["All", "Partly Paid", "Unpaid", "Overdue"],
+			historyStatusItems: ["All", "Paid", "Partly Paid", "Unpaid", "Overdue", "Credit Note Issued"],
+			partialHeaders: [
+				{ title: __("Invoice"), key: "name" },
+				{ title: __("Customer"), key: "customer_name" },
+				{ title: __("Posting"), key: "posting_date" },
+				{ title: __("Due Date"), key: "due_date" },
+				{ title: __("Status"), key: "status" },
+				{ title: __("Total"), key: "grand_total", align: "end" },
+				{ title: __("Paid"), key: "paid_amount", align: "end" },
+				{ title: __("Outstanding"), key: "outstanding_amount", align: "end" },
+				{ title: __("Actions"), key: "actions", align: "end", sortable: false },
+			],
+			historyHeaders: [
+				{ title: __("Invoice"), key: "name" },
+				{ title: __("Customer"), key: "customer_name" },
+				{ title: __("Posting"), key: "posting_date" },
+				{ title: __("Status"), key: "status" },
+				{ title: __("Total"), key: "grand_total", align: "end" },
+				{ title: __("Tendered"), key: "paid_amount", align: "end" },
+				{ title: __("Change Return"), key: "change_amount", align: "end" },
+				{ title: __("Outstanding"), key: "outstanding_amount", align: "end" },
+				{ title: __("Actions"), key: "actions", align: "end", sortable: false },
+			],
+			returnHeaders: [
+				{ title: __("Invoice"), key: "name" },
+				{ title: __("Customer"), key: "customer_name" },
+				{ title: __("Posting"), key: "posting_date" },
+				{ title: __("Against"), key: "return_against" },
+				{ title: __("Total"), key: "grand_total", align: "end" },
+				{ title: __("Actions"), key: "actions", align: "end", sortable: false },
+			],
+			detailHeaders: [
+				{ title: __("Item"), key: "item_name" },
+				{ title: __("Code"), key: "item_code" },
+				{ title: __("Qty"), key: "qty", align: "end" },
+				{ title: __("Rate"), key: "rate", align: "end" },
+				{ title: __("Amount"), key: "amount", align: "end" },
+			],
+			paymentHeaders: [
+				{ title: __("Mode"), key: "mode_of_payment" },
+				{ title: __("Amount"), key: "amount", align: "end" },
+				{ title: __("Account"), key: "account" },
+			],
+		};
+	},
 	computed: {
 		currentInvoiceDoctype() {
 			return this.posProfile?.create_pos_invoice_instead_of_sales_invoice
@@ -1776,6 +1786,24 @@ export default {
 		},
 		filteredReturnInvoices() {
 			this.resetTabPage("returns");
+		},
+		historyDateFrom() {
+			this.loadHistory();
+		},
+		historyDateTo() {
+			this.loadHistory();
+		},
+		partialDateFrom() {
+			this.loadUnpaidInvoices();
+		},
+		partialDateTo() {
+			this.loadUnpaidInvoices();
+		},
+		returnDateFrom() {
+			this.loadHistory();
+		},
+		returnDateTo() {
+			this.loadHistory();
 		},
 		selectedSupervisorPosProfile(value, previousValue) {
 			if (
@@ -2391,7 +2419,16 @@ export default {
 		},
 		async refreshAll() {
 			this.resetPagination();
-			await Promise.all([this.loadUnpaidInvoices(), this.loadHistory(), this.loadDrafts()]);
+			this.loading = true;
+			try {
+				await Promise.all([
+					this.loadUnpaidInvoices({ skipLoadingState: true }),
+					this.loadHistory({ skipLoadingState: true }),
+					this.loadDrafts({ skipLoadingState: true }),
+				]);
+			} finally {
+				this.loading = false;
+			}
 		},
 		async refreshActiveTab() {
 			if (!this.invoiceManagementDialog) return;
@@ -2399,35 +2436,55 @@ export default {
 			if (this.activeTab === "partial") return this.loadUnpaidInvoices();
 			return this.loadHistory();
 		},
-		async loadUnpaidInvoices() {
+		async loadUnpaidInvoices({ skipLoadingState = false } = {}) {
 			if (!this.posProfile?.name) return void (this.unpaidInvoices = []);
-			this.loading = true;
+			if (!skipLoadingState) this.loading = true;
 			try {
-				const filters = this.buildInvoiceFilters({
-					is_return: 0,
-					outstanding_amount: [">", 0],
-				});
+				const doctype = this.currentInvoiceDoctype;
+				const filters = [
+					[doctype, "docstatus", "=", 1],
+					[doctype, "is_return", "=", 0],
+					[doctype, "outstanding_amount", ">", 0]
+				];
+				if (this.isSupervisorScope()) {
+					filters.push([doctype, "company", "=", this.posProfile.company]);
+					const scopedProfile = typeof this.resolveSupervisorProfileScope === "function"
+						? this.resolveSupervisorProfileScope()
+						: null;
+					if (scopedProfile) {
+						filters.push([doctype, "pos_profile", "=", scopedProfile]);
+					}
+				} else {
+					filters.push([doctype, "pos_profile", "=", this.posProfile?.name]);
+				}
+
+				if (this.partialDateFrom || this.partialDateTo) {
+					filters.push([doctype, "posting_date", "between", [
+						this.partialDateFrom || "1970-01-01",
+						this.partialDateTo || "9999-12-31"
+					]]);
+				}
 				const { message } = await frappe.call({
 					method: "frappe.client.get_list",
 					args: {
-						doctype: this.currentInvoiceDoctype,
+						doctype,
 						filters,
 						fields: this.getInvoiceListFields(["due_date"]),
 						order_by: "posting_date desc, posting_time desc, modified desc",
-						limit_page_length: 0,
+						limit_page_length: 200,
 					},
 				});
 				this.unpaidInvoices = Array.isArray(message)
-					? message.map((entry) => ({ ...entry, doctype: this.currentInvoiceDoctype }))
+					? message.map((entry) => ({ ...entry, doctype }))
 					: [];
 			} catch (error) {
 				console.error("Error loading unpaid invoices:", error);
 				this.toastStore.show({ title: __("Unable to fetch unpaid invoices"), color: "error" });
 			} finally {
-				this.loading = false;
+				if (!skipLoadingState) this.loading = false;
 			}
 		},
-		async loadHistory() {
+		async loadHistory({ skipLoadingState = false } = {}) {
 			if (!this.posProfile?.name) {
 				this.historyInvoices = [];
 				this.repairCandidateInvoiceNames = [];
@@ -2435,9 +2492,10 @@ export default {
 				this.repairCandidateScopeReady = false;
 				return;
 			}
-			this.loading = true;
+			if (!skipLoadingState) this.loading = true;
 			try {
-				const filters = this.buildInvoiceFilters();
+				const dateFrom = this.activeTab === "returns" ? this.returnDateFrom : this.historyDateFrom;
+				const dateTo = this.activeTab === "returns" ? this.returnDateTo : this.historyDateTo;
 				const doctypes =
 					typeof this.historyInvoiceDoctypes === "function"
 						? this.historyInvoiceDoctypes()
@@ -2446,6 +2504,27 @@ export default {
 							: [this.currentInvoiceDoctype || "Sales Invoice"];
 				const results = await Promise.all(
 					doctypes.map(async (doctype) => {
+						const filters = [
+							[doctype, "docstatus", "=", 1]
+						];
+						if (this.isSupervisorScope()) {
+							filters.push([doctype, "company", "=", this.posProfile.company]);
+							const scopedProfile = typeof this.resolveSupervisorProfileScope === "function"
+								? this.resolveSupervisorProfileScope()
+								: null;
+							if (scopedProfile) {
+								filters.push([doctype, "pos_profile", "=", scopedProfile]);
+							}
+						} else {
+							filters.push([doctype, "pos_profile", "=", this.posProfile?.name]);
+						}
+
+						if (dateFrom || dateTo) {
+							filters.push([doctype, "posting_date", "between", [
+								dateFrom || "1970-01-01",
+								dateTo || "9999-12-31"
+							]]);
+						}
 						const { message } = await frappe.call({
 							method: "frappe.client.get_list",
 							args: {
@@ -2457,7 +2536,7 @@ export default {
 									"return_against",
 								]),
 								order_by: "posting_date desc, posting_time desc, modified desc",
-								limit_page_length: 0,
+								limit_page_length: 200,
 							},
 						});
 						return Array.isArray(message) ? message.map((entry) => ({ ...entry, doctype })) : [];
@@ -2474,15 +2553,15 @@ export default {
 				this.repairedChangeAllocationInvoiceNames = [];
 				this.repairCandidateScopeReady = false;
 			} finally {
-				this.loading = false;
+				if (!skipLoadingState) this.loading = false;
 			}
 		},
-		async loadDrafts() {
+		async loadDrafts({ skipLoadingState = false } = {}) {
 			if (!this.posProfile?.name) {
 				this.draftRecordsBySource[this.currentDraftSource] = [];
 				return;
 			}
-			this.loading = true;
+			if (!skipLoadingState) this.loading = true;
 			try {
 				const records = await fetchDocumentSourceRecords({
 					source: this.currentDraftSource,
@@ -2506,7 +2585,7 @@ export default {
 				console.error("Error loading source records:", error);
 				this.toastStore.show({ title: __("Unable to fetch documents"), color: "error" });
 			} finally {
-				this.loading = false;
+				if (!skipLoadingState) this.loading = false;
 			}
 		},
 		async viewInvoice(invoice) {
