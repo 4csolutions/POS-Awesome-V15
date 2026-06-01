@@ -144,6 +144,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
+									@update:model-value="loadHistory"
 								/>
 								<v-text-field
 									v-model="historyDateTo"
@@ -153,6 +154,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
+									@update:model-value="loadHistory"
 								/>
 								<v-btn
 									class="history-repair-toggle"
@@ -502,6 +504,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
+									@update:model-value="loadUnpaidInvoices"
 								/>
 								<v-text-field
 									v-model="partialDateTo"
@@ -511,6 +514,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
+									@update:model-value="loadUnpaidInvoices"
 								/>
 							</div>
 
@@ -853,6 +857,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
+									@update:model-value="loadDrafts"
 								/>
 								<v-text-field
 									v-model="draftDateTo"
@@ -862,6 +867,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
+									@update:model-value="loadDrafts"
 								/>
 							</div>
 
@@ -1052,6 +1058,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
+									@update:model-value="loadHistory"
 								/>
 								<v-text-field
 									v-model="returnDateTo"
@@ -1061,6 +1068,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
+									@update:model-value="loadHistory"
 								/>
 							</div>
 
@@ -1804,6 +1812,12 @@ export default {
 		},
 		returnDateTo() {
 			this.loadHistory();
+		},
+		draftDateFrom() {
+			this.loadDrafts();
+		},
+		draftDateTo() {
+			this.loadDrafts();
 		},
 		selectedSupervisorPosProfile(value, previousValue) {
 			if (
