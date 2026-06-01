@@ -335,6 +335,10 @@ export const usePatientsStore = defineStore("patients", () => {
 				resolve([]);
 				return;
 			}
+			const timeoutId = setTimeout(() => {
+				reject(new Error("Request to fetch patients timed out after 15 seconds"));
+			}, 15000);
+
 			frappe.call({
 				method: "posawesome.posawesome.api.patient.get_patient_names",
 				args: {
@@ -343,8 +347,12 @@ export const usePatientsStore = defineStore("patients", () => {
 					limit,
 					start_after: startAfter,
 				},
-				callback: (r: any) => resolve(r.message || []),
+				callback: (r: any) => {
+					clearTimeout(timeoutId);
+					resolve(r.message || []);
+				},
 				error: (err: any) => {
+					clearTimeout(timeoutId);
 					console.error("Failed to fetch patients", err);
 					reject(err);
 				},
@@ -386,6 +394,8 @@ export const usePatientsStore = defineStore("patients", () => {
 							),
 						);
 						loadProgress.value = progress;
+					} else {
+						loadProgress.value = 100;
 					}
 				}
 				if (rows.length === limit) {
@@ -429,17 +439,27 @@ export const usePatientsStore = defineStore("patients", () => {
 			if (!serializedProfile) {
 				return;
 			}
-			const response = await (frappe.call as any)({
-				method: "posawesome.posawesome.api.patient.get_patients_count",
-				args: { pos_profile: serializedProfile },
+			const serverCount = await new Promise<number>((resolve, reject) => {
+				const timeoutId = setTimeout(() => reject(new Error("Request for patient count timed out")), 10000);
+				(frappe.call as any)({
+					method: "posawesome.posawesome.api.patient.get_patients_count",
+					args: { pos_profile: serializedProfile },
+					callback: (r: any) => {
+						clearTimeout(timeoutId);
+						resolve(r.message || 0);
+					},
+					error: (err: any) => {
+						clearTimeout(timeoutId);
+						reject(err);
+					},
+				});
 			});
-			const serverCount = response.message || 0;
 			logServerPatientCount(serverCount);
 			totalPatientCount.value = serverCount;
 			loadedPatientCount.value = localCount;
 			loadProgress.value = serverCount
 				? Math.round((localCount / serverCount) * 100)
-				: 0;
+				: 100;
 
 			if (serverCount > localCount) {
 				const syncSince = getPatientsLastSync();
@@ -530,11 +550,22 @@ export const usePatientsStore = defineStore("patients", () => {
 		loadingPatients.value = true;
 		try {
 			try {
-				const countResponse = await (frappe.call as any)({
-					method: "posawesome.posawesome.api.patient.get_patients_count",
-					args: { pos_profile: serializedProfile },
+				const countPromise = new Promise<number>((resolve, reject) => {
+					const timeoutId = setTimeout(() => reject(new Error("Request for patient count timed out")), 10000);
+					(frappe.call as any)({
+						method: "posawesome.posawesome.api.patient.get_patients_count",
+						args: { pos_profile: serializedProfile },
+						callback: (r: any) => {
+							clearTimeout(timeoutId);
+							resolve(r.message || 0);
+						},
+						error: (err: any) => {
+							clearTimeout(timeoutId);
+							reject(err);
+						},
+					});
 				});
-				totalPatientCount.value = countResponse.message || 0;
+				totalPatientCount.value = await countPromise;
 				logServerPatientCount(totalPatientCount.value);
 			} catch (err) {
 				console.error("Failed to fetch patient count", err);
@@ -559,6 +590,8 @@ export const usePatientsStore = defineStore("patients", () => {
 							100,
 					),
 				);
+			} else {
+				loadProgress.value = 100;
 			}
 			nextPatientStart.value =
 				rows.length === PAGE_SIZE

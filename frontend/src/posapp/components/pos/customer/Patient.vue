@@ -18,7 +18,7 @@
 				:no-data-text="patientNoDataText"
 				hide-details
 				:customFilter="() => true"
-				:disabled="effectiveReadonly || isPatientSearchLocked"
+				:disabled="effectiveReadonly"
 				:menu-props="{ closeOnContentClick: false }"
 				@update:menu="onPatientMenuToggle"
 				@update:modelValue="onPatientChange"
