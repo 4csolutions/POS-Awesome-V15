@@ -29,10 +29,16 @@
 							{{ currencySymbol(displayCurrency) }}{{ formatCurrency(subtotal) }}
 						</strong>
 						<div class="summary-hero__meta">
-							<span
-								>{{ formatFloat(total_qty, hide_qty_decimals ? 0 : undefined) }}
-								{{ __("qty") }}</span
-							>
+							<div class="summary-hero__qty-items-wrap">
+								<span
+									>{{ formatFloat(total_qty, hide_qty_decimals ? 0 : undefined) }}
+									{{ __("qty") }}</span
+								>
+								<span
+									>{{ total_items }}
+									{{ total_items === 1 ? __("item") : __("items") }}</span
+								>
+							</div>
 							<span>
 								{{ currencySymbol(displayCurrency)
 								}}{{ formatCurrency(total_items_discount_amount) }}
@@ -205,6 +211,7 @@ defineOptions({
 const props = defineProps({
 	pos_profile: Object,
 	total_qty: [Number, String],
+	total_items: [Number, String],
 	additional_discount: Number,
 	additional_discount_percentage: Number,
 	total_items_discount_amount: Number,
@@ -596,6 +603,12 @@ defineExpose({
 	gap: 8px 14px;
 	font-size: 0.84rem;
 	color: var(--pos-text-secondary);
+}
+
+.summary-hero__qty-items-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
 }
 
 .summary-hero__field-wrap {

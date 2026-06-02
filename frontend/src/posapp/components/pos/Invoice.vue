@@ -228,6 +228,7 @@
 			ref="invoiceSummary"
 			:pos_profile="pos_profile"
 			:total_qty="total_qty"
+			:total_items="new Set((items || []).map(i => i.item_code)).size"
 			:additional_discount="additional_discount"
 			:additional_discount_percentage="additional_discount_percentage"
 			:total_items_discount_amount="total_items_discount_amount"
