@@ -80,7 +80,7 @@
 							<div class="invoice-tab-label">
 								<span>{{ __("History") }}</span>
 								<v-chip size="x-small" variant="flat" color="primary">{{
-									filteredHistoryInvoices.length
+									historyTotalCount
 								}}</v-chip>
 							</div>
 						</v-tab>
@@ -104,7 +104,7 @@
 							<div class="invoice-tab-label">
 								<span>{{ __("Returns") }}</span>
 								<v-chip size="x-small" variant="flat" color="error">{{
-									filteredReturnInvoices.length
+									returnsTotalCount
 								}}</v-chip>
 							</div>
 						</v-tab>
@@ -144,7 +144,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
-									@update:model-value="loadHistory"
+									@update:model-value="() => loadHistory()"
 								/>
 								<v-text-field
 									v-model="historyDateTo"
@@ -154,7 +154,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
-									@update:model-value="loadHistory"
+									@update:model-value="() => loadHistory()"
 								/>
 								<v-btn
 									class="history-repair-toggle"
@@ -181,7 +181,7 @@
 								<div class="summary-tile summary-tile--history">
 									<div class="summary-tile__label">{{ __("Invoices") }}</div>
 									<div class="summary-tile__value">
-										{{ filteredHistoryInvoices.length }}
+										{{ historyTotalCount }}
 									</div>
 									<div class="summary-tile__meta">
 										{{ __("Completed and active sales in this range") }}
@@ -504,7 +504,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
-									@update:model-value="loadUnpaidInvoices"
+									@update:model-value="() => loadUnpaidInvoices()"
 								/>
 								<v-text-field
 									v-model="partialDateTo"
@@ -514,7 +514,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
-									@update:model-value="loadUnpaidInvoices"
+									@update:model-value="() => loadUnpaidInvoices()"
 								/>
 							</div>
 
@@ -857,7 +857,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
-									@update:model-value="loadDrafts"
+									@update:model-value="() => loadDrafts()"
 								/>
 								<v-text-field
 									v-model="draftDateTo"
@@ -867,7 +867,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
-									@update:model-value="loadDrafts"
+									@update:model-value="() => loadDrafts()"
 								/>
 							</div>
 
@@ -1058,7 +1058,7 @@
 									density="compact"
 									hide-details
 									:label="__('From Date')"
-									@update:model-value="loadHistory"
+									@update:model-value="() => loadHistory()"
 								/>
 								<v-text-field
 									v-model="returnDateTo"
@@ -1068,7 +1068,7 @@
 									density="compact"
 									hide-details
 									:label="__('To Date')"
-									@update:model-value="loadHistory"
+									@update:model-value="() => loadHistory()"
 								/>
 							</div>
 
@@ -1536,6 +1536,14 @@ export default {
 				delivery: [],
 			},
 			repairChangeLoading: false,
+			historySearchTimeout: null,
+			partialSearchTimeout: null,
+			returnSearchTimeout: null,
+			draftSearchTimeout: null,
+			historyTotalCount: 0,
+			returnsTotalCount: 0,
+			allHistoryInvoices: [],
+			allReturnsInvoices: [],
 			detailDialog: false,
 			selectedInvoiceDetail: null,
 			partialStatusItems: ["All", "Partly Paid", "Unpaid", "Overdue"],
@@ -1709,7 +1717,8 @@ export default {
 			);
 		},
 		historyTotals() {
-			return this.filteredHistoryInvoices.reduce(
+			const invoices = this.allHistoryInvoices || [];
+			return invoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.gross += Number(invoice.grand_total || 0);
 					accumulator.paid += this.getRealPaidAmount(invoice);
@@ -1721,7 +1730,8 @@ export default {
 			);
 		},
 		returnTotals() {
-			return this.filteredReturnInvoices.reduce(
+			const invoices = this.allReturnsInvoices || [];
+			return invoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.total_value += Math.abs(Number(invoice.grand_total || 0));
 					return accumulator;
@@ -1743,7 +1753,7 @@ export default {
 			);
 		},
 		paginatedHistoryInvoices() {
-			return this.paginateCollection(this.filteredHistoryInvoices, "history");
+			return this.filteredHistoryInvoices;
 		},
 		paginatedUnpaidInvoices() {
 			return this.paginateCollection(this.filteredUnpaidInvoices, "partial");
@@ -1752,10 +1762,10 @@ export default {
 			return this.paginateCollection(this.filteredDraftInvoices, "drafts");
 		},
 		paginatedReturnInvoices() {
-			return this.paginateCollection(this.filteredReturnInvoices, "returns");
+			return this.filteredReturnInvoices;
 		},
 		historyPageCount() {
-			return this.pageCount(this.filteredHistoryInvoices.length);
+			return Math.max(1, Math.ceil(this.historyTotalCount / 200));
 		},
 		partialPageCount() {
 			return this.pageCount(this.filteredUnpaidInvoices.length);
@@ -1764,7 +1774,7 @@ export default {
 			return this.pageCount(this.filteredDraftInvoices.length);
 		},
 		returnsPageCount() {
-			return this.pageCount(this.filteredReturnInvoices.length);
+			return Math.max(1, Math.ceil(this.returnsTotalCount / 200));
 		},
 	},
 	watch: {
@@ -1783,23 +1793,25 @@ export default {
 		activeTab() {
 			this.refreshActiveTab();
 		},
-		filteredHistoryInvoices() {
-			this.resetTabPage("history");
-		},
 		filteredUnpaidInvoices() {
 			this.resetTabPage("partial");
 		},
 		filteredDraftInvoices() {
 			this.resetTabPage("drafts");
 		},
-		filteredReturnInvoices() {
-			this.resetTabPage("returns");
-		},
 		historyDateFrom() {
-			this.loadHistory();
+			if (this.tabPages.history !== 1) {
+				this.tabPages.history = 1;
+			} else {
+				this.loadHistory();
+			}
 		},
 		historyDateTo() {
-			this.loadHistory();
+			if (this.tabPages.history !== 1) {
+				this.tabPages.history = 1;
+			} else {
+				this.loadHistory();
+			}
 		},
 		partialDateFrom() {
 			this.loadUnpaidInvoices();
@@ -1808,16 +1820,79 @@ export default {
 			this.loadUnpaidInvoices();
 		},
 		returnDateFrom() {
-			this.loadHistory();
+			if (this.tabPages.returns !== 1) {
+				this.tabPages.returns = 1;
+			} else {
+				this.loadHistory();
+			}
 		},
 		returnDateTo() {
-			this.loadHistory();
+			if (this.tabPages.returns !== 1) {
+				this.tabPages.returns = 1;
+			} else {
+				this.loadHistory();
+			}
 		},
 		draftDateFrom() {
 			this.loadDrafts();
 		},
 		draftDateTo() {
 			this.loadDrafts();
+		},
+		historySearch() {
+			if (this.historySearchTimeout) clearTimeout(this.historySearchTimeout);
+			this.historySearchTimeout = setTimeout(() => {
+				if (this.tabPages.history !== 1) {
+					this.tabPages.history = 1;
+				} else {
+					this.loadHistory();
+				}
+			}, 350);
+		},
+		historyStatus() {
+			if (this.tabPages.history !== 1) {
+				this.tabPages.history = 1;
+			} else {
+				this.loadHistory();
+			}
+		},
+		historyShowRepairCandidatesOnly() {
+			if (this.tabPages.history !== 1) {
+				this.tabPages.history = 1;
+			} else {
+				this.loadHistory();
+			}
+		},
+		partialSearch() {
+			if (this.partialSearchTimeout) clearTimeout(this.partialSearchTimeout);
+			this.partialSearchTimeout = setTimeout(() => {
+				this.loadUnpaidInvoices();
+			}, 350);
+		},
+		partialStatus() {
+			this.loadUnpaidInvoices();
+		},
+		returnSearch() {
+			if (this.returnSearchTimeout) clearTimeout(this.returnSearchTimeout);
+			this.returnSearchTimeout = setTimeout(() => {
+				if (this.tabPages.returns !== 1) {
+					this.tabPages.returns = 1;
+				} else {
+					this.loadHistory();
+				}
+			}, 350);
+		},
+		draftSearch() {
+			if (this.draftSearchTimeout) clearTimeout(this.draftSearchTimeout);
+			this.draftSearchTimeout = setTimeout(() => {
+				this.loadDrafts();
+			}, 350);
+		},
+		"tabPages.history"(value) {
+			this.loadHistory();
+		},
+		"tabPages.returns"(value) {
+			this.loadHistory();
 		},
 		selectedSupervisorPosProfile(value, previousValue) {
 			if (
@@ -1892,6 +1967,14 @@ export default {
 			return items.slice(startIndex, startIndex + perPage);
 		},
 		paginationCaption(totalItems, tab) {
+			if (tab === "history" || tab === "returns") {
+				const total = tab === "history" ? this.historyTotalCount : this.returnsTotalCount;
+				if (!total) return __("Showing 0 of 0");
+				const currentPage = Number(this.tabPages?.[tab]) || 1;
+				const start = (currentPage - 1) * 200 + 1;
+				const end = Math.min(total, currentPage * 200);
+				return __("Showing {0}-{1} of {2}", [start, end, total]);
+			}
 			const total = Number(totalItems || 0);
 			if (!total) return __("Showing 0 of 0");
 			const perPage = Number(this.pageSize) || TAB_PAGE_SIZE;
@@ -2455,34 +2538,49 @@ export default {
 			if (!skipLoadingState) this.loading = true;
 			try {
 				const doctype = this.currentInvoiceDoctype;
-				const filters = [
-					[doctype, "docstatus", "=", 1],
-					[doctype, "is_return", "=", 0],
-					[doctype, "outstanding_amount", ">", 0]
-				];
+				const filters = {
+					docstatus: 1,
+					is_return: 0,
+					outstanding_amount: [">", 0]
+				};
 				if (this.isSupervisorScope()) {
-					filters.push([doctype, "company", "=", this.posProfile.company]);
+					filters.company = this.posProfile.company;
 					const scopedProfile = typeof this.resolveSupervisorProfileScope === "function"
 						? this.resolveSupervisorProfileScope()
 						: null;
 					if (scopedProfile) {
-						filters.push([doctype, "pos_profile", "=", scopedProfile]);
+						filters.pos_profile = scopedProfile;
 					}
 				} else {
-					filters.push([doctype, "pos_profile", "=", this.posProfile?.name]);
+					filters.pos_profile = this.posProfile?.name;
 				}
 
 				if (this.partialDateFrom || this.partialDateTo) {
-					filters.push([doctype, "posting_date", "between", [
+					filters.posting_date = ["between", [
 						this.partialDateFrom || "1970-01-01",
 						this.partialDateTo || "9999-12-31"
-					]]);
+					]];
 				}
+
+				let or_filters = undefined;
+				if (this.partialSearch) {
+					const likeVal = `%${this.partialSearch}%`;
+					or_filters = [
+						{ name: ["like", likeVal] },
+						{ customer: ["like", likeVal] },
+						{ customer_name: ["like", likeVal] },
+						{ owner: ["like", likeVal] },
+						{ custom_created_by_name: ["like", likeVal] },
+						{ custom_submitted_by_name: ["like", likeVal] },
+					];
+				}
+
 				const { message } = await frappe.call({
 					method: "frappe.client.get_list",
 					args: {
 						doctype,
 						filters,
+						or_filters,
 						fields: this.getInvoiceListFields(["due_date"]),
 						order_by: "posting_date desc, posting_time desc, modified desc",
 						limit_page_length: 200,
@@ -2501,6 +2599,10 @@ export default {
 		async loadHistory({ skipLoadingState = false } = {}) {
 			if (!this.posProfile?.name) {
 				this.historyInvoices = [];
+				this.historyTotalCount = 0;
+				this.returnsTotalCount = 0;
+				this.allHistoryInvoices = [];
+				this.allReturnsInvoices = [];
 				this.repairCandidateInvoiceNames = [];
 				this.repairedChangeAllocationInvoiceNames = [];
 				this.repairCandidateScopeReady = false;
@@ -2516,40 +2618,161 @@ export default {
 						: this.currentInvoiceDoctype === "POS Invoice"
 							? ["POS Invoice", "Sales Invoice"]
 							: [this.currentInvoiceDoctype || "Sales Invoice"];
-				const results = await Promise.all(
+				
+				let overallInvoices = [];
+				await Promise.all(
 					doctypes.map(async (doctype) => {
-						const filters = [
-							[doctype, "docstatus", "=", 1]
-						];
+						const filters = {
+							docstatus: 1
+						};
 						if (this.isSupervisorScope()) {
-							filters.push([doctype, "company", "=", this.posProfile.company]);
+							filters.company = this.posProfile.company;
 							const scopedProfile = typeof this.resolveSupervisorProfileScope === "function"
 								? this.resolveSupervisorProfileScope()
 								: null;
 							if (scopedProfile) {
-								filters.push([doctype, "pos_profile", "=", scopedProfile]);
+								filters.pos_profile = scopedProfile;
 							}
 						} else {
-							filters.push([doctype, "pos_profile", "=", this.posProfile?.name]);
+							filters.pos_profile = this.posProfile?.name;
 						}
 
 						if (dateFrom || dateTo) {
-							filters.push([doctype, "posting_date", "between", [
+							filters.posting_date = ["between", [
 								dateFrom || "1970-01-01",
 								dateTo || "9999-12-31"
-							]]);
+							]];
 						}
+
+						if (this.activeTab === "returns") {
+							filters.is_return = 1;
+						} else {
+							filters.is_return = 0;
+						}
+
+						if (this.activeTab === "history" && this.historyStatus && this.historyStatus !== "All") {
+							filters.status = this.historyStatus;
+						}
+
+						if (this.activeTab === "history" && this.historyShowRepairCandidatesOnly) {
+							filters.change_amount = [">", 0];
+							filters.outstanding_amount = ["<", 0];
+						}
+
+						const search = this.activeTab === "returns" ? this.returnSearch : this.historySearch;
+						let or_filters = undefined;
+						if (search) {
+							const likeVal = `%${search}%`;
+							or_filters = [
+								{ name: ["like", likeVal] },
+								{ customer: ["like", likeVal] },
+								{ customer_name: ["like", likeVal] },
+								{ owner: ["like", likeVal] },
+								{ custom_created_by_name: ["like", likeVal] },
+								{ custom_submitted_by_name: ["like", likeVal] },
+							];
+							if (this.activeTab === "returns") {
+								or_filters.push({ return_against: ["like", likeVal] });
+							}
+						}
+
 						const { message } = await frappe.call({
 							method: "frappe.client.get_list",
 							args: {
 								doctype,
 								filters,
+								or_filters,
+								fields: ["name", "grand_total", "paid_amount", "change_amount", "outstanding_amount", "is_return", "status"],
+								limit_page_length: 0,
+							},
+						});
+						if (Array.isArray(message)) {
+							overallInvoices.push(...message.map((entry) => ({ ...entry, doctype })));
+						}
+					}),
+				);
+
+				const totalCount = overallInvoices.length;
+				if (this.activeTab === "returns") {
+					this.returnsTotalCount = totalCount;
+					this.allReturnsInvoices = overallInvoices;
+				} else {
+					this.historyTotalCount = totalCount;
+					this.allHistoryInvoices = overallInvoices;
+				}
+
+				const results = await Promise.all(
+					doctypes.map(async (doctype) => {
+						const filters = {
+							docstatus: 1
+						};
+						if (this.isSupervisorScope()) {
+							filters.company = this.posProfile.company;
+							const scopedProfile = typeof this.resolveSupervisorProfileScope === "function"
+								? this.resolveSupervisorProfileScope()
+								: null;
+							if (scopedProfile) {
+								filters.pos_profile = scopedProfile;
+							}
+						} else {
+							filters.pos_profile = this.posProfile?.name;
+						}
+
+						if (dateFrom || dateTo) {
+							filters.posting_date = ["between", [
+								dateFrom || "1970-01-01",
+								dateTo || "9999-12-31"
+							]];
+						}
+
+						if (this.activeTab === "returns") {
+							filters.is_return = 1;
+						} else {
+							filters.is_return = 0;
+						}
+
+						if (this.activeTab === "history" && this.historyStatus && this.historyStatus !== "All") {
+							filters.status = this.historyStatus;
+						}
+
+						if (this.activeTab === "history" && this.historyShowRepairCandidatesOnly) {
+							filters.change_amount = [">", 0];
+							filters.outstanding_amount = ["<", 0];
+						}
+
+						const search = this.activeTab === "returns" ? this.returnSearch : this.historySearch;
+						let or_filters = undefined;
+						if (search) {
+							const likeVal = `%${search}%`;
+							or_filters = [
+								{ name: ["like", likeVal] },
+								{ customer: ["like", likeVal] },
+								{ customer_name: ["like", likeVal] },
+								{ owner: ["like", likeVal] },
+								{ custom_created_by_name: ["like", likeVal] },
+								{ custom_submitted_by_name: ["like", likeVal] },
+							];
+							if (this.activeTab === "returns") {
+								or_filters.push({ return_against: ["like", likeVal] });
+							}
+						}
+
+						const currentPage = Number(this.tabPages?.[this.activeTab === "returns" ? "returns" : "history"]) || 1;
+						const limit_start = (currentPage - 1) * 200;
+
+						const { message } = await frappe.call({
+							method: "frappe.client.get_list",
+							args: {
+								doctype,
+								filters,
+								or_filters,
 								fields: this.getInvoiceListFields([
 									"change_amount",
 									"is_return",
 									"return_against",
 								]),
 								order_by: "posting_date desc, posting_time desc, modified desc",
+								limit_start,
 								limit_page_length: 200,
 							},
 						});
@@ -2589,6 +2812,7 @@ export default {
 							: null,
 					resolveCashierProfileScope: () => this.posProfile?.name || null,
 					resolveCashierScope: () => this.currentCashier?.user || null,
+					search: this.draftSearch || undefined,
 				});
 				this.draftRecordsBySource = {
 					...this.draftRecordsBySource,
