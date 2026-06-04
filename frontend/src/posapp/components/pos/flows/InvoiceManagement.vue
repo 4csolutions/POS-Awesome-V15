@@ -80,7 +80,7 @@
 							<div class="invoice-tab-label">
 								<span>{{ __("History") }}</span>
 								<v-chip size="x-small" variant="flat" color="primary">{{
-									historyTotalCount
+									filteredAllHistoryInvoices.length
 								}}</v-chip>
 							</div>
 						</v-tab>
@@ -104,7 +104,7 @@
 							<div class="invoice-tab-label">
 								<span>{{ __("Returns") }}</span>
 								<v-chip size="x-small" variant="flat" color="error">{{
-									returnsTotalCount
+									filteredAllReturnsInvoices.length
 								}}</v-chip>
 							</div>
 						</v-tab>
@@ -181,7 +181,7 @@
 								<div class="summary-tile summary-tile--history">
 									<div class="summary-tile__label">{{ __("Invoices") }}</div>
 									<div class="summary-tile__value">
-										{{ historyTotalCount }}
+										{{ filteredAllHistoryInvoices.length }}
 									</div>
 									<div class="summary-tile__meta">
 										{{ __("Completed and active sales in this range") }}
@@ -1076,7 +1076,7 @@
 								<div class="summary-tile summary-tile--history">
 									<div class="summary-tile__label">{{ __("Total Invoices") }}</div>
 									<div class="summary-tile__value">
-										{{ filteredReturnInvoices.length }}
+										{{ filteredAllReturnsInvoices.length }}
 									</div>
 									<div class="summary-tile__meta">
 										{{ __("Total return invoices in this range") }}
@@ -1671,9 +1671,24 @@ export default {
 				),
 			);
 		},
+		filteredAllHistoryInvoices() {
+			const visibleInvoices = (this.allHistoryInvoices || []).filter((invoice) => !invoice.is_return);
+			const candidateScopedInvoices = this.historyShowRepairCandidatesOnly
+				? visibleInvoices.filter((invoice) => this.changeAllocationRepairState(invoice) !== null)
+				: visibleInvoices;
+			return this.sortInvoicesByLatest(
+				this.filterCollection(
+					candidateScopedInvoices,
+					this.historySearch,
+					this.historyStatus,
+					this.historyDateFrom,
+					this.historyDateTo,
+				),
+			);
+		},
 		historyRepairCandidateCount() {
 			return this.filterCollection(
-				this.historyInvoices.filter(
+				(this.allHistoryInvoices || []).filter(
 					(invoice) => !invoice.is_return && this.changeAllocationRepairState(invoice) !== null,
 				),
 				this.historySearch,
@@ -1704,11 +1719,22 @@ export default {
 				),
 			);
 		},
+		filteredAllReturnsInvoices() {
+			return this.sortInvoicesByLatest(
+				this.filterCollection(
+					(this.allReturnsInvoices || []).filter((d) => d.is_return),
+					this.returnSearch,
+					"All",
+					this.returnDateFrom,
+					this.returnDateTo,
+				),
+			);
+		},
 		filteredUnpaidSummary() {
 			return this.filteredUnpaidInvoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.count += 1;
-					accumulator.total_paid += Number(invoice.paid_amount || 0);
+					accumulator.total_paid += this.getRealPaidAmount(invoice);
 					accumulator.total_outstanding += Number(invoice.outstanding_amount || 0);
 					if (this.isOverdue(invoice)) accumulator.overdue_count += 1;
 					return accumulator;
@@ -1717,7 +1743,7 @@ export default {
 			);
 		},
 		historyTotals() {
-			const invoices = this.allHistoryInvoices || [];
+			const invoices = this.filteredAllHistoryInvoices || [];
 			return invoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.gross += Number(invoice.grand_total || 0);
@@ -1730,7 +1756,7 @@ export default {
 			);
 		},
 		returnTotals() {
-			const invoices = this.allReturnsInvoices || [];
+			const invoices = this.filteredAllReturnsInvoices || [];
 			return invoices.reduce(
 				(accumulator, invoice) => {
 					accumulator.total_value += Math.abs(Number(invoice.grand_total || 0));
@@ -1765,7 +1791,7 @@ export default {
 			return this.filteredReturnInvoices;
 		},
 		historyPageCount() {
-			return Math.max(1, Math.ceil(this.historyTotalCount / 200));
+			return Math.max(1, Math.ceil(this.filteredAllHistoryInvoices.length / 200));
 		},
 		partialPageCount() {
 			return this.pageCount(this.filteredUnpaidInvoices.length);
@@ -1774,7 +1800,7 @@ export default {
 			return this.pageCount(this.filteredDraftInvoices.length);
 		},
 		returnsPageCount() {
-			return Math.max(1, Math.ceil(this.returnsTotalCount / 200));
+			return Math.max(1, Math.ceil(this.filteredAllReturnsInvoices.length / 200));
 		},
 	},
 	watch: {
@@ -2566,12 +2592,10 @@ export default {
 				if (this.partialSearch) {
 					const likeVal = `%${this.partialSearch}%`;
 					or_filters = [
-						{ name: ["like", likeVal] },
-						{ customer: ["like", likeVal] },
-						{ customer_name: ["like", likeVal] },
-						{ owner: ["like", likeVal] },
-						{ custom_created_by_name: ["like", likeVal] },
-						{ custom_submitted_by_name: ["like", likeVal] },
+						["name", "like", likeVal],
+						["customer", "like", likeVal],
+						["customer_name", "like", likeVal],
+						["owner", "like", likeVal],
 					];
 				}
 
@@ -2664,15 +2688,13 @@ export default {
 						if (search) {
 							const likeVal = `%${search}%`;
 							or_filters = [
-								{ name: ["like", likeVal] },
-								{ customer: ["like", likeVal] },
-								{ customer_name: ["like", likeVal] },
-								{ owner: ["like", likeVal] },
-								{ custom_created_by_name: ["like", likeVal] },
-								{ custom_submitted_by_name: ["like", likeVal] },
+								["name", "like", likeVal],
+								["customer", "like", likeVal],
+								["customer_name", "like", likeVal],
+								["owner", "like", likeVal],
 							];
 							if (this.activeTab === "returns") {
-								or_filters.push({ return_against: ["like", likeVal] });
+								or_filters.push(["return_against", "like", likeVal]);
 							}
 						}
 
@@ -2682,7 +2704,11 @@ export default {
 								doctype,
 								filters,
 								or_filters,
-								fields: ["name", "grand_total", "paid_amount", "change_amount", "outstanding_amount", "is_return", "status"],
+								fields: this.getInvoiceListFields([
+									"change_amount",
+									"is_return",
+									"return_against",
+								]),
 								limit_page_length: 0,
 							},
 						});
@@ -2745,15 +2771,13 @@ export default {
 						if (search) {
 							const likeVal = `%${search}%`;
 							or_filters = [
-								{ name: ["like", likeVal] },
-								{ customer: ["like", likeVal] },
-								{ customer_name: ["like", likeVal] },
-								{ owner: ["like", likeVal] },
-								{ custom_created_by_name: ["like", likeVal] },
-								{ custom_submitted_by_name: ["like", likeVal] },
+								["name", "like", likeVal],
+								["customer", "like", likeVal],
+								["customer_name", "like", likeVal],
+								["owner", "like", likeVal],
 							];
 							if (this.activeTab === "returns") {
-								or_filters.push({ return_against: ["like", likeVal] });
+								or_filters.push(["return_against", "like", likeVal]);
 							}
 						}
 
