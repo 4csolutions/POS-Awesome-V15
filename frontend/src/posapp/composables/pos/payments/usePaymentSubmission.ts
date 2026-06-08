@@ -474,7 +474,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			if (has_cash_payment && cash_amount > 0) {
 				if (
 					!profile.posa_allow_partial_payment &&
-					formatFloat(cash_amount + writeOffAmount, prec) <
+					effective_total_payments <
 						invoice_total &&
 					invoice_total > 0
 				) {
