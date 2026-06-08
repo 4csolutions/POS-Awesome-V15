@@ -80,6 +80,17 @@ frappe.pages["posapp"].on_page_load = async function (wrapper) {
 	});
 	const pageRef = (wrapper && wrapper.page) || page;
 
+	// Override Frappe router to let Vue Router handle internal POS routes without throwing 'Page app not found'
+	const original_route = frappe.router.route;
+	frappe.router.route = async function () {
+		const path = window.location.pathname;
+		if (path.startsWith("/app/posapp") || path.startsWith("/app/pos")) {
+			return;
+		}
+		return await original_route.apply(this, arguments);
+	};
+	pageRef._original_route = original_route;
+
 	try {
 		await ensurePosBootController();
 		await window.startPosBoot({ pageRef });
@@ -95,6 +106,11 @@ frappe.pages["posapp"].on_page_load = async function (wrapper) {
 };
 
 frappe.pages["posapp"].on_page_unload = function (wrapper) {
+	if (wrapper && wrapper.page && wrapper.page._original_route) {
+		frappe.router.route = wrapper.page._original_route;
+		wrapper.page._original_route = null;
+	}
+
 	if (
 		wrapper &&
 		wrapper.page &&
