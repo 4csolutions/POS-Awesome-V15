@@ -40,6 +40,7 @@ export interface TerminalEmployee {
 }
 
 const STORAGE_KEY = "posa_terminal_cashier";
+const SESSION_USER_KEY = "posa_session_user";
 
 const getBrowserGlobal = (): any =>
 	typeof window !== "undefined" ? window : globalThis;
@@ -68,10 +69,18 @@ const readStoredCashierUser = (): string => {
 
 const persistCashierUser = (user: string) => {
 	try {
+		const storage = getBrowserGlobal()?.localStorage;
+		if (!storage) return;
+
 		if (user) {
-			getBrowserGlobal()?.localStorage?.setItem(STORAGE_KEY, user);
+			storage.setItem(STORAGE_KEY, user);
+			const sessionUser = getSessionCashier()?.user;
+			if (sessionUser) {
+				storage.setItem(SESSION_USER_KEY, sessionUser);
+			}
 		} else {
-			getBrowserGlobal()?.localStorage?.removeItem(STORAGE_KEY);
+			storage.removeItem(STORAGE_KEY);
+			storage.removeItem(SESSION_USER_KEY);
 		}
 	} catch {
 		// Ignore storage failures.
@@ -79,6 +88,24 @@ const persistCashierUser = (user: string) => {
 };
 
 export const useEmployeeStore = defineStore("employee", () => {
+	// Detect if the logged-in session user has changed and reset stored cashier if so
+	try {
+		const storage = getBrowserGlobal()?.localStorage;
+		if (storage) {
+			const sessionUser = getSessionCashier()?.user;
+			const lastSessionUser = storage.getItem(SESSION_USER_KEY);
+			if (sessionUser && lastSessionUser && sessionUser !== lastSessionUser) {
+				storage.removeItem(STORAGE_KEY);
+				storage.removeItem(SESSION_USER_KEY);
+			}
+			if (sessionUser) {
+				storage.setItem(SESSION_USER_KEY, sessionUser);
+			}
+		}
+	} catch {
+		// Ignore storage failures.
+	}
+
 	const terminalEmployees = ref<TerminalEmployee[]>([]);
 	const currentCashier = ref<TerminalEmployee | null>(getSessionCashier());
 	const switchDialogOpen = ref(false);
