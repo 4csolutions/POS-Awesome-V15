@@ -33,7 +33,20 @@ DASHBOARD_MANAGER_ROLES = {
 
 
 def _pick_first_column(doctype: str, candidates: list[str]) -> str | None:
-    for fieldname in candidates:
+    adjusted_candidates = list(candidates)
+    if "base_grand_total" in candidates or "grand_total" in candidates:
+        disable_rounding = frappe.db.get_single_value("Global Defaults", "disable_rounded_total")
+        if not disable_rounding:
+            new_candidates = []
+            for c in candidates:
+                if c == "base_grand_total":
+                    new_candidates.append("base_rounded_total")
+                elif c == "grand_total":
+                    new_candidates.append("rounded_total")
+                new_candidates.append(c)
+            adjusted_candidates = new_candidates
+
+    for fieldname in adjusted_candidates:
         if frappe.db.has_column(doctype, fieldname):
             return fieldname
     return None

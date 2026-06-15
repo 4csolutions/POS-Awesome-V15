@@ -207,6 +207,16 @@
 										{{ __("Amount received from customer") }}
 									</div>
 								</div>
+								<div class="summary-tile summary-tile--info">
+									<div class="summary-tile__label">{{ __("Total Write-Off") }}</div>
+									<div class="summary-tile__value">
+										{{ currencySymbol(posProfile?.currency) }}
+										{{ formatCurrency(historyTotals.write_off) }}
+									</div>
+									<div class="summary-tile__meta">
+										{{ __("Total amount written off separately") }}
+									</div>
+								</div>
 								<div class="summary-tile summary-tile--danger">
 									<div class="summary-tile__label">{{ __("Change Return") }}</div>
 									<div class="summary-tile__value">
@@ -265,6 +275,10 @@
 								<template #item.paid_amount="{ item }"
 									>{{ currencySymbol(item.currency) }}
 									{{ formatCurrency(getRealPaidAmount(item)) }}</template
+								>
+								<template #item.write_off_amount="{ item }"
+									>{{ currencySymbol(item.currency) }}
+									{{ formatCurrency(item.write_off_amount || 0) }}</template
 								>
 								<template #item.change_amount="{ item }"
 									>{{ currencySymbol(item.currency) }}
@@ -397,6 +411,13 @@
 												<div class="meta-pair__value meta-pair__value--success">
 													{{ currencySymbol(invoice.currency) }}
 													{{ formatCurrency(getRealPaidAmount(invoice)) }}
+												</div>
+											</div>
+											<div class="meta-pair">
+												<div class="meta-pair__label">{{ __("Write-Off") }}</div>
+												<div class="meta-pair__value meta-pair__value--info">
+													{{ currencySymbol(invoice.currency) }}
+													{{ formatCurrency(invoice.write_off_amount || 0) }}
 												</div>
 											</div>
 											<div class="meta-pair">
@@ -1566,6 +1587,7 @@ export default {
 				{ title: __("Status"), key: "status" },
 				{ title: __("Total"), key: "grand_total", align: "end" },
 				{ title: __("Tendered"), key: "paid_amount", align: "end" },
+				{ title: __("Write-Off"), key: "write_off_amount", align: "end" },
 				{ title: __("Change Return"), key: "change_amount", align: "end" },
 				{ title: __("Outstanding"), key: "outstanding_amount", align: "end" },
 				{ title: __("Actions"), key: "actions", align: "end", sortable: false },
@@ -1746,13 +1768,23 @@ export default {
 			const invoices = this.filteredAllHistoryInvoices || [];
 			return invoices.reduce(
 				(accumulator, invoice) => {
-					accumulator.gross += Number(invoice.grand_total || 0);
+					const gross = invoice.rounded_total ? Number(invoice.rounded_total) : Number(invoice.grand_total || 0);
+					accumulator.gross += gross;
+
+					const writeOff = Number(invoice.write_off_amount || 0);
+					accumulator.write_off += writeOff;
+
+					const outstanding = Number(invoice.outstanding_amount || 0);
+					accumulator.outstanding += outstanding;
+
 					accumulator.paid += this.getRealPaidAmount(invoice);
-					accumulator.change_return += Number(invoice.change_amount || 0);
-					accumulator.outstanding += Number(invoice.outstanding_amount || 0);
+
+					const change = Number(invoice.change_amount || 0);
+					accumulator.change_return += change;
+
 					return accumulator;
 				},
-				{ gross: 0, paid: 0, change_return: 0, outstanding: 0 },
+				{ gross: 0, paid: 0, change_return: 0, outstanding: 0, write_off: 0 },
 			);
 		},
 		returnTotals() {
@@ -1801,6 +1833,9 @@ export default {
 		},
 		returnsPageCount() {
 			return Math.max(1, Math.ceil(this.filteredAllReturnsInvoices.length / 200));
+		},
+		companyCurrency() {
+			return this.uiStore.companyDoc?.default_currency || this.posProfile?.currency || "";
 		},
 	},
 	watch: {
@@ -1958,9 +1993,10 @@ export default {
 	methods: {
 		getRealPaidAmount(invoice) {
 			const paid = Number(invoice?.paid_amount || 0);
-			const grandTotal = Number(invoice?.grand_total || 0);
+			const gross = Number(invoice?.rounded_total || invoice?.grand_total || 0);
 			const outstanding = Number(invoice?.outstanding_amount || 0);
-			return paid + Math.max(0, (grandTotal - paid) - outstanding);
+			const writeOff = Number(invoice?.write_off_amount || 0);
+			return paid + Math.max(0, (gross - paid) - outstanding - writeOff);
 		},
 		resetPagination() {
 			this.tabPages = {
@@ -2244,8 +2280,10 @@ export default {
 				"posting_date",
 				"posting_time",
 				"grand_total",
+				"rounded_total",
 				"paid_amount",
 				"outstanding_amount",
+				"write_off_amount",
 				"status",
 				"currency",
 				"pos_profile",
