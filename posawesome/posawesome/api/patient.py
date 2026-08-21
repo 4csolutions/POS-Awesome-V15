@@ -159,6 +159,15 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                     flt(item_details.get("base_price_list_rate")) or
                     flt(item_details.get("rate", 0))
                 )
+
+            if not rate and price_list:
+                pl_rate = frappe.db.get_value(
+                    "Item Price",
+                    {"item_code": item_code, "price_list": price_list, "selling": 1},
+                    "price_list_rate"
+                )
+                if pl_rate:
+                    rate = flt(pl_rate)
             
             dosage_str = row.get("dosage")
             period_str = row.get("period")
@@ -210,12 +219,21 @@ def get_patient_medications(patient, pos_profile, encounter=None):
 
         except Exception as e:
             frappe.log_error(f"Error fetching item details for {item_code}: {e}", "Medication Fetch Error")
-            # Fallback to explicit or 0 rate
+            # Fallback to explicit or price list rate
             fallback_rate = 0
             if medication:
                 explicit_rate = medication_rates.get((medication, item_code))
                 if explicit_rate:
                     fallback_rate = explicit_rate
+
+            if not fallback_rate and price_list:
+                pl_rate = frappe.db.get_value(
+                    "Item Price",
+                    {"item_code": item_code, "price_list": price_list, "selling": 1},
+                    "price_list_rate"
+                )
+                if pl_rate:
+                    fallback_rate = flt(pl_rate)
 
             dosage_str = row.get("dosage")
             period_str = row.get("period")
@@ -231,6 +249,7 @@ def get_patient_medications(patient, pos_profile, encounter=None):
                 "item_code": item_code,
                 "qty": qty,
                 "rate": fallback_rate,
+                "price_list_rate": fallback_rate,
                 "amount": qty * fallback_rate,
                 "description": fallback_desc,
                 "reference_dt": "Medication Request",

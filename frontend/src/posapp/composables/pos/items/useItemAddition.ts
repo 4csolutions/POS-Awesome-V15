@@ -547,14 +547,25 @@ export function useItemAddition() {
 							for (let i = 1; i < allocations.length; i++) {
 								const alloc = allocations[i];
 								if (!alloc) continue;
-								// Clone new_item. Using getNewItem again is safer to ensure unique IDs
+								// Clone new_item with preserved rates and amounts
 								const split_item = getNewItem(
-									{ ...item, qty: alloc.qty },
+									{
+										...item,
+										qty: alloc.qty,
+										rate: new_item.rate ?? item.rate,
+										price_list_rate: new_item.price_list_rate ?? item.price_list_rate,
+										base_rate: new_item.base_rate ?? item.base_rate,
+										base_price_list_rate: new_item.base_price_list_rate ?? item.base_price_list_rate,
+									},
 									context,
 								);
 								// Copy crucial flags from new_item if any changed
 								split_item.to_set_batch_no = null;
 								split_item.batch_no = alloc.batch;
+								if (new_item.rate != null || item.rate != null) {
+									split_item.rate = new_item.rate ?? item.rate;
+									split_item.price_list_rate = new_item.price_list_rate ?? item.price_list_rate ?? split_item.rate;
+								}
 
 								// Need to explicitly set batch here because getNewItem resets logic
 								callSetBatchQty(
@@ -563,6 +574,12 @@ export function useItemAddition() {
 									alloc.batch,
 									false,
 								);
+								if (split_item.rate == null || split_item.rate === 0) {
+									if (new_item.rate || item.rate) {
+										split_item.rate = new_item.rate || item.rate;
+										split_item.price_list_rate = new_item.price_list_rate || item.price_list_rate || split_item.rate;
+									}
+								}
 								if (split_item.has_serial_no) {
 									autoAssignSerials(split_item, context);
 								}
@@ -570,8 +587,7 @@ export function useItemAddition() {
 								extra_items.push(split_item);
 							}
 						} else {
-							// No usable batches found? cap to 0
-							new_item.qty = 0;
+							// No usable batches found: fallback to standard assignment without zeroing
 							callSetBatchQty(context, new_item, null, false);
 						}
 					}

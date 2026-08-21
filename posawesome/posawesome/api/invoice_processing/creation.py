@@ -666,6 +666,27 @@ def _clear_stale_party_fields_for_customer_change(
     return invoice_doc
 
 
+def _safe_sync_child_tables(doc, data):
+    child_fields = ["items", "payments", "taxes", "advances", "packed_items"]
+    for field in child_fields:
+        if field in data and isinstance(data[field], list):
+            if callable(getattr(doc, "set", None)):
+                doc.set(field, [])
+            else:
+                setattr(doc, field, [])
+            for row in data[field]:
+                if isinstance(row, dict):
+                    clean_row = dict(row)
+                    clean_row.pop("name", None)
+                    clean_row.pop("parent", None)
+                    clean_row.pop("parenttype", None)
+                    clean_row.pop("parentfield", None)
+                    if callable(getattr(doc, "append", None)):
+                        doc.append(field, clean_row)
+                    else:
+                        getattr(doc, field).append(clean_row)
+
+
 def _get_mutable_invoice_doc(data, doctype):
     invoice_name = (data or {}).get("name")
     if not invoice_name:
@@ -699,7 +720,13 @@ def _get_mutable_invoice_doc(data, doctype):
         )
         return frappe.get_doc(fresh_payload)
 
-    invoice_doc.update(data)
+    scalar_data = {
+        k: v for k, v in data.items()
+        if k not in ("items", "payments", "taxes", "advances", "packed_items", "item_wise_tax_details")
+    }
+    invoice_doc.update(scalar_data)
+    _safe_sync_child_tables(invoice_doc, data)
+
     invoice_doc = _clear_stale_party_fields_for_customer_change(
         invoice_doc,
         data,
@@ -1170,8 +1197,10 @@ def submit_invoice(invoice, data, submit_in_background=False):
             del invoice["modified"]
         if invoice.get("posting_date"):
             invoice["set_posting_time"] = 1
-        invoice_doc = frappe.get_doc(doctype, invoice_name)
-        invoice_doc.update(invoice)
+        invoice_doc = _get_mutable_invoice_doc(invoice, doctype)
+
+    if invoice.get("items") and len(invoice.get("items")) > 0 and len(invoice_doc.items) == 0:
+        frappe.throw(_("Invoice items cannot be empty"))
 
     set_invoice_client_request_id(invoice_doc, client_request_id)
     if ledger_doc:

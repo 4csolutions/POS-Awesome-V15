@@ -267,15 +267,17 @@ const submit = () => {
 				if (take <= 0) continue;
 
 				const bPrice = flt(batch.batch_price);
-				const splitItem = { ...row, qty: take, batch_no: batch.batch_no };
-				
-				if (bPrice > 0) {
-					splitItem.rate = bPrice;
-					splitItem.price_list_rate = bPrice;
-					splitItem.base_rate = bPrice;
-					splitItem.base_price_list_rate = bPrice;
-					splitItem.amount = take * bPrice;
-				}
+				const itemRate = bPrice > 0 ? bPrice : (flt(row.rate) || flt(row.price_list_rate) || 0);
+				const splitItem = {
+					...row,
+					qty: take,
+					batch_no: batch.batch_no,
+					rate: itemRate,
+					price_list_rate: itemRate,
+					base_rate: itemRate,
+					base_price_list_rate: itemRate,
+					amount: take * itemRate,
+				};
 
 				// Ensure new posa_row_id for splits to avoid duplicate keys in cart
 				if (remainingQty < row.qty || finalItems.some(i => i.item_code === row.item_code)) {
@@ -289,7 +291,15 @@ const submit = () => {
 			// or we can add a row with no batch/remainder if allowed.
 			// Currently, we just stop at available stock.
 		} else {
-			finalItems.push({ ...row });
+			const itemRate = flt(row.rate) || flt(row.price_list_rate) || 0;
+			finalItems.push({
+				...row,
+				rate: itemRate,
+				price_list_rate: itemRate,
+				base_rate: itemRate,
+				base_price_list_rate: itemRate,
+				amount: row.qty * itemRate,
+			});
 		}
 	});
 

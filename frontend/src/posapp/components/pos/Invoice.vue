@@ -460,8 +460,15 @@ export default {
 				this.invoiceStore.setPackedItems(value);
 			},
 		},
-		patient() {
-			return this.patientsStore?.selectedPatient || null;
+		patient: {
+			get() {
+				return this.patientsStore?.selectedPatient || null;
+			},
+			set(value) {
+				if (this.patientsStore?.setSelectedPatient) {
+					this.patientsStore.setSelectedPatient(value);
+				}
+			},
 		},
 		paymentVisible() {
 			return this.activeView === "payment" || this.uiStore.paymentDialogOpen;
