@@ -47,6 +47,7 @@ export function useItemCreation() {
 		new_item.discount_percentage = 0;
 		new_item.discount_amount_per_item = 0;
 		new_item.price_list_rate = item.price_list_rate ?? item.rate ?? 0;
+		new_item.rate = item.rate ?? new_item.price_list_rate ?? 0;
 
 		// Setup base rates properly for multi-currency
 		const companyCurrency = context.pos_profile.currency;
@@ -54,17 +55,35 @@ export function useItemCreation() {
 		if (selectedCurrency !== companyCurrency) {
 			// Store original base currency values (Selected -> Company)
 			new_item.base_price_list_rate =
-				item.base_price_list_rate ?? toCompanyCurrency(context, item.rate);
+				item.base_price_list_rate ?? toCompanyCurrency(context, new_item.price_list_rate);
 			new_item.base_rate =
-				item.base_rate ?? toCompanyCurrency(context, item.rate);
+				item.base_rate ?? toCompanyCurrency(context, new_item.rate);
 			new_item.base_discount_amount = 0;
 		} else {
 			// In base currency, base rates = displayed rates
 			new_item.base_price_list_rate =
-				item.base_price_list_rate ?? item.rate;
+				item.base_price_list_rate ?? new_item.price_list_rate;
 			new_item.base_rate =
-				item.base_rate ?? item.rate;
+				item.base_rate ?? new_item.rate;
 			new_item.base_discount_amount = 0;
+		}
+
+		// Fast-path: Pre-initialize batch and batch price synchronously from cached batch data
+		if (item.has_batch_no && Array.isArray(item.batch_no_data) && item.batch_no_data.length > 0) {
+			const usableBatches = item.batch_no_data.filter((b: any) => !b.is_expired && (context.isReturnInvoice || (b.batch_qty ?? b.available_qty) > 0));
+			const defaultBatch = usableBatches.length > 0 ? usableBatches[0] : item.batch_no_data[0];
+			if (defaultBatch?.batch_no) {
+				new_item.batch_no = defaultBatch.batch_no;
+				const bPrice = Number(defaultBatch.batch_price);
+				if (Number.isFinite(bPrice) && bPrice > 0) {
+					new_item.batch_price = bPrice;
+					new_item.base_batch_price = bPrice;
+					new_item.rate = bPrice;
+					new_item.price_list_rate = bPrice;
+					new_item.base_rate = bPrice;
+					new_item.base_price_list_rate = bPrice;
+				}
+			}
 		}
 
 

@@ -532,8 +532,28 @@ def merge_item_row(
 
     batch_rows = lookup_data.batch_map.get(item_code, [])
     actual_qty = lookup_data.stock_map.get(item_code, 0) or 0
+    earliest_batch_price = None
     if meta.get("has_batch_no") and batch_rows:
         actual_qty = sum(flt(batch.get("batch_qty")) for batch in batch_rows if not batch.get("is_expired"))
+        # First preference: earliest non-expired batch with available stock and positive batch price
+        for b in batch_rows:
+            if not b.get("is_expired") and flt(b.get("batch_price")) > 0 and flt(b.get("batch_qty")) > 0:
+                earliest_batch_price = flt(b.get("batch_price"))
+                break
+        # Fallback: earliest non-expired batch with positive batch price regardless of stock
+        if earliest_batch_price is None:
+            for b in batch_rows:
+                if not b.get("is_expired") and flt(b.get("batch_price")) > 0:
+                    earliest_batch_price = flt(b.get("batch_price"))
+                    break
+
+    resolved_rate = 0
+    if meta.get("has_batch_no") and earliest_batch_price is not None:
+        resolved_rate = earliest_batch_price
+    elif price_row and price_row.get("price_list_rate") is not None:
+        resolved_rate = flt(price_row.get("price_list_rate"))
+    elif meta.get("standard_rate"):
+        resolved_rate = flt(meta.get("standard_rate"))
 
     row = dict(item)
     row.update(
@@ -550,8 +570,9 @@ def merge_item_row(
             "default_bom": meta.get("default_bom"),
             "batch_no_data": batch_rows,
             "serial_no_data": lookup_data.serial_map.get(item_code, []),
-            "rate": price_row.get("price_list_rate") if price_row else 0,
-            "price_list_rate": price_row.get("price_list_rate") if price_row else 0,
+            "rate": resolved_rate,
+            "price_list_rate": resolved_rate,
+            "batch_price": earliest_batch_price,
             "currency": price_currency or price_list_currency,
             "price_list_currency": price_list_currency,
             "plc_conversion_rate": exchange_rate,

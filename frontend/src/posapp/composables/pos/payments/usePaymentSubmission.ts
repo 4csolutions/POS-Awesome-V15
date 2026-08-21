@@ -377,6 +377,14 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		const doc = unref(invoiceDoc);
 		const profile = unref(posProfile);
 		const prec = unref(options.currencyPrecision) || 2;
+		if (!doc || !profile) return false;
+
+		// Prevent submitting empty invoice
+		const cartItems = options.stores?.invoiceStore?.items || [];
+		const docItems = doc?.items || [];
+		if (cartItems.length === 0 && docItems.length === 0) {
+			throw new Error(__("Cannot submit an invoice without items."));
+		}
 		const {
 			isCashback,
 			paidChange,
@@ -615,6 +623,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 
 	const buildSubmissionInvoiceDoc = (doc: any) => {
 		const submissionDoc = JSON.parse(JSON.stringify(doc || {}));
+		if ((!submissionDoc.items || submissionDoc.items.length === 0) && stores?.invoiceStore?.items?.length) {
+			submissionDoc.items = JSON.parse(JSON.stringify(stores.invoiceStore.items));
+		}
 		ensureInvoiceClientRequestId(submissionDoc);
 		return submissionDoc;
 	};

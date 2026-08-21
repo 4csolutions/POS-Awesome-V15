@@ -318,10 +318,22 @@ export function useBatchSerial() {
 					item.qty * item.base_rate,
 					context.currency_precision,
 				);
-			} else if (update && context.update_item_detail) {
+			} else {
+				// Selected batch has no specific batch price:
+				// Fallback cleanly to item rate/price_list_rate rather than resetting to 0
+				const fallbackRate = Number(item.original_rate ?? item.original_price_list_rate ?? item.price_list_rate ?? item.rate ?? 0);
+				if (fallbackRate > 0) {
+					item.rate = fallbackRate;
+					item.price_list_rate = fallbackRate;
+					item.base_rate = Number(item.base_price_list_rate || fallbackRate);
+					item.amount = flt(item.qty * item.rate, context.currency_precision);
+					item.base_amount = flt(item.qty * item.base_rate, context.currency_precision);
+				}
 				item.batch_price = null;
 				item.base_batch_price = null;
-				context.update_item_detail(item);
+				if (update && context.update_item_detail && !fallbackRate) {
+					context.update_item_detail(item);
+				}
 			}
 		} else {
 			item.batch_no = null;

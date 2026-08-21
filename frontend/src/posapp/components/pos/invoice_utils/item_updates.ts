@@ -106,14 +106,20 @@ export async function update_items_details(context: any, items: any[]) {
 						context.selected_currency;
 					const manualLocked =
 						item._manual_rate_set === true;
+					const hasActiveBatch = Boolean(
+						item.has_batch_no &&
+						(item.batch_price || item.base_batch_price) &&
+						!manualLocked
+					);
 					const shouldOverrideRate =
 						!lockReturnPricing &&
 						!item.locked_price &&
 						!item.posa_offer_applied &&
-						!manualLocked;
+						!manualLocked &&
+						!hasActiveBatch;
 
 					if (shouldOverrideRate) {
-						if (force || price) {
+						if ((force && price > 0) || (price > 0 && price !== item.rate)) {
 							if (context._applyPriceListRate)
 								context._applyPriceListRate(
 									item,
@@ -397,7 +403,13 @@ export function _applyItemDetailPayload(
 		if (context.set_batch_qty) context.set_batch_qty(item, null, false);
 	}
 
-	if (!item.locked_price) {
+	const hasActiveBatchPrice = Boolean(
+		item.has_batch_no &&
+		(item.batch_price || item.base_batch_price) &&
+		!item._manual_rate_set
+	);
+
+	if (!item.locked_price && !hasActiveBatchPrice) {
 		if (forceUpdate || !item.base_rate) {
 			const plcConversionRate = context._getPlcConversionRate
 				? context._getPlcConversionRate()
@@ -406,7 +418,7 @@ export function _applyItemDetailPayload(
 				item.base_price_list_rate =
 					data.price_list_rate * plcConversionRate;
 			}
-			if (context._applyPriceListRate) {
+			if (context._applyPriceListRate && (data.price_list_rate > 0 || !item.rate)) {
 				const priceCurrency =
 					data.currency ||
 					data.price_list_currency ||

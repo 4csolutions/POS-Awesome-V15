@@ -1186,6 +1186,8 @@ def submit_invoice(invoice, data, submit_in_background=False):
             invoice_name = None
 
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
+        if not invoice.get("items"):
+            frappe.throw(_("Cannot create or update an invoice without items."))
         if client_request_id:
             invoice["posa_client_request_id"] = client_request_id
         created = update_invoice(json.dumps(invoice))
@@ -1197,10 +1199,11 @@ def submit_invoice(invoice, data, submit_in_background=False):
             del invoice["modified"]
         if invoice.get("posting_date"):
             invoice["set_posting_time"] = 1
-        invoice_doc = _get_mutable_invoice_doc(invoice, doctype)
-
-    if invoice.get("items") and len(invoice.get("items")) > 0 and len(invoice_doc.items) == 0:
-        frappe.throw(_("Invoice items cannot be empty"))
+        invoice_doc = frappe.get_doc(doctype, invoice_name)
+        # Prevent wiping existing items with an empty items array from client payload
+        if not invoice.get("items") and invoice_doc.get("items"):
+            invoice["items"] = [d.as_dict() for d in invoice_doc.items]
+        invoice_doc.update(invoice)
 
     set_invoice_client_request_id(invoice_doc, client_request_id)
     if ledger_doc:
@@ -1293,6 +1296,9 @@ def submit_invoice(invoice, data, submit_in_background=False):
     _validate_stock_on_invoice(invoice_doc)
 
     _apply_write_off_settings(invoice_doc, data)
+
+    if not invoice_doc.get("items"):
+        frappe.throw(_("Cannot submit an invoice without items."))
 
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
