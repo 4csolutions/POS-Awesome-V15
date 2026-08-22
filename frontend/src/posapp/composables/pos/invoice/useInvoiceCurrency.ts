@@ -321,6 +321,11 @@ export function useInvoiceCurrency() {
 			item._skip_calc = true;
 			refreshCanonicalBaseRates(item, currencyContext);
 
+			if (Number(item.base_batch_price || 0) > 0) {
+				item.base_rate = item.base_batch_price;
+				item.base_price_list_rate = item.base_batch_price;
+			}
+
 			// Ensure base rates exist
 			if (!item.base_rate) {
 				if (selected_currency.value === companyCurrency) {

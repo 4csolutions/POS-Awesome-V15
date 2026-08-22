@@ -116,6 +116,9 @@ export function _resolveBaseRate(context: any, item: any) {
 	if (!item) {
 		return 0;
 	}
+	if (Number(item.base_batch_price || item.batch_price || 0) > 0) {
+		return Number(item.base_batch_price || item.batch_price);
+	}
 	const candidates = [
 		item.base_price_list_rate,
 		item.price_list_rate,

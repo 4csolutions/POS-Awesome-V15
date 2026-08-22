@@ -74,7 +74,10 @@ export async function update_items_details(context: any, items: any[]) {
 				item.batch_no_data = updated_item.batch_no_data;
 				item.serial_no_data = updated_item.serial_no_data;
 
-				if (
+				if (item.has_batch_no && item.batch_no) {
+					if (context.set_batch_qty)
+						context.set_batch_qty(item, item.batch_no, false);
+				} else if (
 					item.has_batch_no &&
 					context.pos_profile?.posa_auto_set_batch &&
 					!item.batch_no &&
@@ -89,9 +92,13 @@ export async function update_items_details(context: any, items: any[]) {
 					item.price_list_currency = updated_item.price_list_currency;
 				}
 
+				const hasBatchPrice =
+					Number(item.base_batch_price || item.batch_price || 0) > 0;
+
 				if (
-					updated_item.rate !== undefined ||
-					updated_item.price_list_rate !== undefined
+					!hasBatchPrice &&
+					(updated_item.rate !== undefined ||
+					updated_item.price_list_rate !== undefined)
 				) {
 					const force =
 						context.pos_profile
@@ -112,19 +119,45 @@ export async function update_items_details(context: any, items: any[]) {
 						!item.posa_offer_applied &&
 						!manualLocked;
 
-					if (shouldOverrideRate) {
+					// Preserve existing rate if incoming price is 0 or unavailable
+					const existingItemRate = Number(item.rate ?? 0);
+					const incomingPriceIsZero = !price || price <= 0;
+					const itemHasValidRate = existingItemRate > 0;
+					const skipZeroPriceOverride = incomingPriceIsZero && itemHasValidRate;
+
+					if (shouldOverrideRate && !skipZeroPriceOverride) {
 						if (force || price) {
-							if (context._applyPriceListRate)
+							if (context._applyPriceListRate) {
 								context._applyPriceListRate(
 									item,
 									price,
 									priceCurrency,
 								);
+							}
+							const discountPct = Number(item.discount_percentage || 0);
+							if (discountPct > 0) {
+								const basePLR = Number(item.base_price_list_rate || 0);
+								const baseDiscount = (basePLR * discountPct) / 100;
+								item.base_discount_amount = baseDiscount;
+								item.base_rate = Math.max(basePLR - baseDiscount, 0);
+								const plr = Number(item.price_list_rate || 0);
+								const discount = (plr * discountPct) / 100;
+								item.discount_amount = context.flt
+									? context.flt(discount, context.currency_precision)
+									: discount;
+								item.rate = context.flt
+									? context.flt(plr - discount, context.currency_precision)
+									: plr - discount;
+							} else if (!item.discount_amount) {
+								item.rate = item.price_list_rate;
+								item.base_rate = item.base_price_list_rate;
+							}
 						}
 					} else if (
 						!lockReturnPricing &&
 						!item.price_list_rate &&
-						(force || price)
+						(force || price) &&
+						!skipZeroPriceOverride
 					) {
 						if (context._computePriceConversion) {
 							const converted = context._computePriceConversion(
@@ -136,6 +169,8 @@ export async function update_items_details(context: any, items: any[]) {
 									converted.base_price_list_rate;
 							}
 							item.price_list_rate = converted.price_list_rate;
+							item.rate = item.price_list_rate;
+							item.base_rate = item.base_price_list_rate;
 						}
 					}
 				}
@@ -386,7 +421,10 @@ export function _applyItemDetailPayload(
 		item.serial_no_selected_count = item.serial_no_selected.length;
 	}
 
-	if (
+	if (item.has_batch_no && item.batch_no) {
+		if (data.batch_no_data) item.batch_no_data = data.batch_no_data;
+		if (context.set_batch_qty) context.set_batch_qty(item, item.batch_no, false);
+	} else if (
 		item.has_batch_no &&
 		context.pos_profile.posa_auto_set_batch &&
 		!item.batch_no &&
@@ -397,16 +435,23 @@ export function _applyItemDetailPayload(
 		if (context.set_batch_qty) context.set_batch_qty(item, null, false);
 	}
 
-	if (!item.locked_price) {
+	const hasBatchPricePayload =
+		Number(item.base_batch_price || item.batch_price || 0) > 0;
+
+	if (!item.locked_price && !hasBatchPricePayload) {
 		if (forceUpdate || !item.base_rate) {
 			const plcConversionRate = context._getPlcConversionRate
 				? context._getPlcConversionRate()
 				: 1;
-			if (data.price_list_rate !== 0 || !item.base_price_list_rate) {
+			// Preserve existing base rate if incoming price is 0
+			const existingBasePLR = Number(item.base_price_list_rate ?? 0);
+			const incomingPLR = Number(data.price_list_rate ?? 0);
+			const skipZeroOverride = incomingPLR <= 0 && existingBasePLR > 0;
+			if (!skipZeroOverride && (data.price_list_rate !== 0 || !item.base_price_list_rate)) {
 				item.base_price_list_rate =
 					data.price_list_rate * plcConversionRate;
 			}
-			if (context._applyPriceListRate) {
+			if (!skipZeroOverride && context._applyPriceListRate) {
 				const priceCurrency =
 					data.currency ||
 					data.price_list_currency ||

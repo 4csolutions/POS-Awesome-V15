@@ -224,6 +224,7 @@ export function apply_cached_price_list(context: any, price_list: string) {
 
 	context.items.forEach((item) => {
 		if (!item || !item.item_code) return;
+		if (Number(item.base_batch_price || item.batch_price || 0) > 0) return;
 		const rateInfo = itemsMap[item.item_code];
 		if (rateInfo) {
 			_applyPriceListRate(
