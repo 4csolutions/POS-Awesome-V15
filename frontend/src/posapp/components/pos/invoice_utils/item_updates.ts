@@ -93,7 +93,7 @@ export async function update_items_details(context: any, items: any[]) {
 				}
 
 				const hasBatchPrice =
-					Number(item.base_batch_price || item.batch_price || 0) > 0;
+					flt(item.base_batch_price || item.batch_price) > 0;
 
 				if (
 					!hasBatchPrice &&
@@ -120,8 +120,8 @@ export async function update_items_details(context: any, items: any[]) {
 						!manualLocked;
 
 					// Preserve existing rate if incoming price is 0 or unavailable
-					const existingItemRate = Number(item.rate ?? 0);
-					const incomingPriceIsZero = !price || price <= 0;
+					const existingItemRate = flt(item.rate);
+					const incomingPriceIsZero = !price || flt(price) <= 0;
 					const itemHasValidRate = existingItemRate > 0;
 					const skipZeroPriceOverride = incomingPriceIsZero && itemHasValidRate;
 
@@ -134,13 +134,13 @@ export async function update_items_details(context: any, items: any[]) {
 									priceCurrency,
 								);
 							}
-							const discountPct = Number(item.discount_percentage || 0);
+							const discountPct = flt(item.discount_percentage);
 							if (discountPct > 0) {
-								const basePLR = Number(item.base_price_list_rate || 0);
+								const basePLR = flt(item.base_price_list_rate);
 								const baseDiscount = (basePLR * discountPct) / 100;
 								item.base_discount_amount = baseDiscount;
 								item.base_rate = Math.max(basePLR - baseDiscount, 0);
-								const plr = Number(item.price_list_rate || 0);
+								const plr = flt(item.price_list_rate);
 								const discount = (plr * discountPct) / 100;
 								item.discount_amount = context.flt
 									? context.flt(discount, context.currency_precision)
@@ -436,7 +436,7 @@ export function _applyItemDetailPayload(
 	}
 
 	const hasBatchPricePayload =
-		Number(item.base_batch_price || item.batch_price || 0) > 0;
+		flt(item.base_batch_price || item.batch_price) > 0;
 
 	if (!item.locked_price && !hasBatchPricePayload) {
 		if (forceUpdate || !item.base_rate) {
@@ -444,8 +444,8 @@ export function _applyItemDetailPayload(
 				? context._getPlcConversionRate()
 				: 1;
 			// Preserve existing base rate if incoming price is 0
-			const existingBasePLR = Number(item.base_price_list_rate ?? 0);
-			const incomingPLR = Number(data.price_list_rate ?? 0);
+			const existingBasePLR = flt(item.base_price_list_rate);
+			const incomingPLR = flt(data.price_list_rate);
 			const skipZeroOverride = incomingPLR <= 0 && existingBasePLR > 0;
 			if (!skipZeroOverride && (data.price_list_rate !== 0 || !item.base_price_list_rate)) {
 				item.base_price_list_rate =

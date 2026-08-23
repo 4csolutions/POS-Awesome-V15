@@ -46,6 +46,8 @@ import {
 const __ = window.__ || ((s) => s);
 // @ts-ignore
 const frappe = window.frappe;
+// @ts-ignore
+const flt = window.flt || ((v, p) => Number(v) || 0);
 
 /**
  * useInvoiceCurrency Composable
@@ -321,7 +323,7 @@ export function useInvoiceCurrency() {
 			item._skip_calc = true;
 			refreshCanonicalBaseRates(item, currencyContext);
 
-			if (Number(item.base_batch_price || 0) > 0) {
+			if (flt(item.base_batch_price) > 0) {
 				item.base_rate = item.base_batch_price;
 				item.base_price_list_rate = item.base_batch_price;
 			}

@@ -14,6 +14,7 @@ import {
 } from "../../../utils/erpnextCurrency";
 
 declare const frappe: any;
+declare const flt: (_value: unknown, _precision?: number) => number;
 
 export async function fetch_customer_details(context: any) {
 	try {
@@ -224,7 +225,7 @@ export function apply_cached_price_list(context: any, price_list: string) {
 
 	context.items.forEach((item) => {
 		if (!item || !item.item_code) return;
-		if (Number(item.base_batch_price || item.batch_price || 0) > 0) return;
+		if (flt(item.base_batch_price || item.batch_price) > 0) return;
 		const rateInfo = itemsMap[item.item_code];
 		if (rateInfo) {
 			_applyPriceListRate(

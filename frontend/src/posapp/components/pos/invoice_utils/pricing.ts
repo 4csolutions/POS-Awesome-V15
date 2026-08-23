@@ -6,6 +6,7 @@ import { _syncAutoFreeLines } from "./free_items";
 
 declare const __: (_text: string, _args?: any[]) => string;
 declare const frappe: any;
+declare const flt: (_value: unknown, _precision?: number) => number;
 
 /**
  * Pricing Utils
@@ -116,8 +117,8 @@ export function _resolveBaseRate(context: any, item: any) {
 	if (!item) {
 		return 0;
 	}
-	if (Number(item.base_batch_price || item.batch_price || 0) > 0) {
-		return Number(item.base_batch_price || item.batch_price);
+	if (flt(item.base_batch_price || item.batch_price) > 0) {
+		return flt(item.base_batch_price || item.batch_price);
 	}
 	const candidates = [
 		item.base_price_list_rate,

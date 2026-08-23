@@ -651,23 +651,17 @@ export function useDiscounts() {
 			return;
 		}
 
-		if (Number(item.base_batch_price || item.batch_price || 0) > 0) {
-			const baseBatchPrice = Number(item.base_batch_price || item.batch_price);
+		if (flt(item.base_batch_price || item.batch_price) > 0) {
+			const baseBatchPrice = flt(item.base_batch_price || item.batch_price);
 			item.base_price_list_rate = baseBatchPrice;
-			item.base_rate = baseBatchPrice;
+			if (!item._manual_rate_set) {
+				item.base_rate = baseBatchPrice;
+			}
 			item.price_list_rate = toSelectedCurrency(context, baseBatchPrice);
-			item.rate = item.price_list_rate;
-			item.amount = context.flt(
-				item.qty * item.rate,
-				context.currency_precision,
-			);
-			item.base_amount = toBaseCurrency(context, item.amount);
-			refreshInvoiceTotals(context);
-			if (context.forceUpdate) context.forceUpdate();
-			return;
-		}
-
-		if (item.price_list_rate) {
+			if (!item._manual_rate_set && !item.discount_percentage && !item.discount_amount) {
+				item.rate = item.price_list_rate;
+			}
+		} else if (item.price_list_rate) {
 			// Always work with base rates first
 			if (!item.base_price_list_rate) {
 				item.base_price_list_rate = toBaseCurrency(
