@@ -164,6 +164,26 @@ export function get_invoice_doc(context: any) {
 	doc.pos_profile = doc.pos_profile || context.pos_profile?.name || null;
 	doc.posa_show_custom_name_marker_on_print =
 		context.pos_profile?.posa_show_custom_name_marker_on_print ?? null;
+	doc.set_warehouse = doc.set_warehouse || context.pos_profile?.warehouse || null;
+	doc.cost_center =
+		doc.cost_center ||
+		context.pos_profile?.cost_center ||
+		context.pos_profile?.write_off_cost_center ||
+		null;
+	doc.taxes_and_charges =
+		doc.taxes_and_charges || context.pos_profile?.taxes_and_charges || null;
+	doc.tc_name = doc.tc_name || context.pos_profile?.tc_name || null;
+	doc.terms = doc.terms || context.pos_profile?.terms || null;
+	doc.account_for_change_amount =
+		doc.account_for_change_amount ||
+		context.pos_profile?.account_for_change_amount ||
+		null;
+	doc.write_off_account =
+		doc.write_off_account || context.pos_profile?.write_off_account || null;
+	doc.write_off_cost_center =
+		doc.write_off_cost_center ||
+		context.pos_profile?.write_off_cost_center ||
+		null;
 
 	// Keep stock update explicit for invoice doctypes so submit-time checks are predictable.
 	if (doc.doctype === "Sales Invoice" || doc.doctype === "POS Invoice") {
@@ -531,6 +551,27 @@ export function get_invoice_items(context: any) {
 			uom: item.uom,
 			conversion_factor: item.conversion_factor,
 			serial_no: item.serial_no,
+			warehouse: item.warehouse || context.pos_profile?.warehouse || null,
+			cost_center:
+				item.cost_center ||
+				context.pos_profile?.cost_center ||
+				context.pos_profile?.write_off_cost_center ||
+				null,
+			income_account:
+				item.income_account ||
+				context.pos_profile?.income_account ||
+				null,
+			expense_account:
+				item.expense_account ||
+				context.pos_profile?.expense_account ||
+				null,
+			stock_uom: item.stock_uom || item.uom,
+			stock_qty:
+				item.stock_qty ||
+				flt(item.qty) * flt(item.conversion_factor || 1),
+			allow_negative_stock: item.allow_negative_stock,
+			has_serial_no: item.has_serial_no,
+			has_batch_no: item.has_batch_no,
 			// Link to original invoice item when doing returns
 			// Needed for backend validation that the item exists in
 			// the referenced Sales or POS Invoice
@@ -653,6 +694,12 @@ export function get_order_items(context: any) {
 			amount: flt(item.qty) * flt(item.rate),
 			conversion_factor: item.conversion_factor,
 			serial_no: item.serial_no,
+			warehouse: item.warehouse || context.pos_profile?.warehouse || null,
+			cost_center:
+				item.cost_center ||
+				context.pos_profile?.cost_center ||
+				context.pos_profile?.write_off_cost_center ||
+				null,
 			discount_percentage: flt(item.discount_percentage),
 			discount_amount: flt(item.discount_amount),
 			batch_no: item.batch_no,

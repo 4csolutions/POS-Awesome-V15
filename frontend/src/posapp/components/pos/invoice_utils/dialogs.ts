@@ -45,9 +45,7 @@ export async function show_payment(context: any) {
 
 		if (context.ensure_auto_batch_selection) await context.ensure_auto_batch_selection();
 
-		// Capture the transient refundable cap before process_invoice()/backend
-		// reload, which return a doc stripped of non-DocType fields. It is
-		// re-attached below so the payment screen can default a credit return.
+		// Capture the transient refundable cap so the payment screen can default a credit return.
 		const carriedRefundableAmount = context.invoice_doc?.posa_refundable_amount;
 
 		let invoice_doc;
@@ -56,30 +54,22 @@ export async function show_payment(context: any) {
 			posProfile: context.pos_profile,
 		});
 		if (
-			paymentDoctype === "Sales Order" &&
-			!context.new_delivery_date &&
-			!(context.invoice_doc && context.invoice_doc.posa_delivery_date)
-		) {
-			invoice_doc = context.get_invoice_doc();
-		} else if (
 			context.invoice_doc &&
 			context.invoice_doc.doctype === "Sales Order" &&
 			context.invoiceType === "Invoice"
 		) {
-			invoice_doc = await context.process_invoice_from_order();
+			invoice_doc = context.get_invoice_from_order_doc
+				? await context.get_invoice_from_order_doc()
+				: (context.get_invoice_doc ? context.get_invoice_doc() : {});
 		} else {
-			invoice_doc = await context.process_invoice();
+			if (typeof context.applyReturnDiscountProration === "function") {
+				context.applyReturnDiscountProration();
+			}
+			invoice_doc = context.get_invoice_doc ? context.get_invoice_doc() : {};
 		}
 
 		if (!invoice_doc) {
 			return;
-		}
-
-		if (!isOffline() && invoice_doc.name) {
-			const refreshed = await context.reload_current_invoice_from_backend();
-			if (refreshed) {
-				invoice_doc = refreshed;
-			}
 		}
 
 		invoice_doc.currency = context.selected_currency || context.pos_profile.currency;

@@ -14,6 +14,13 @@ const createPaymentContext = () => ({
 	invoiceType: "Invoice",
 	pos_profile: { currency: "USD" },
 	invoice_doc: {},
+	get_invoice_doc: vi.fn(() => ({
+		doctype: "Sales Invoice",
+		grand_total: 10,
+		rounded_total: 10,
+		total: 10,
+		payments: [],
+	})),
 	process_invoice: vi.fn(async () => ({
 		doctype: "Sales Invoice",
 		grand_total: 10,
