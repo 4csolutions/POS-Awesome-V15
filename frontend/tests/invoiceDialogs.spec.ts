@@ -59,11 +59,12 @@ describe("invoice payment dialogs", () => {
 		});
 	});
 
-	it("switches compact layout to the selector when opening payments", async () => {
+	it("switches compact layout to the selector when opening payments and runs dry-run calculation", async () => {
 		const context = createPaymentContext();
 
 		await show_payment(context);
 
+		expect(context.process_invoice).toHaveBeenCalledWith(false);
 		expect(context.uiStore.setActiveView).toHaveBeenCalledWith("payment");
 		expect(context.eventBus.emit).toHaveBeenCalledWith("set_compact_panel", "selector");
 		expect(context.eventBus.emit).toHaveBeenCalledWith("show_payment", "true");

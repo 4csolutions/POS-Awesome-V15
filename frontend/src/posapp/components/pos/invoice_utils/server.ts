@@ -98,7 +98,7 @@ const extractServerErrorMessage = (context: any, error: any) => {
 	return __("Error processing invoice");
 };
 
-export async function update_invoice(context: any, doc: any) {
+export async function update_invoice(context: any, doc: any, save = true) {
 	if (isOffline()) {
 		context.invoice_doc = Object.assign({}, context.invoice_doc || {}, doc);
 		return context.invoice_doc;
@@ -125,6 +125,7 @@ export async function update_invoice(context: any, doc: any) {
 			method,
 			args: {
 				data: doc,
+				save: save ? 1 : 0,
 			},
 		});
 
@@ -165,7 +166,7 @@ export async function update_invoice(context: any, doc: any) {
 	}
 }
 
-export async function update_invoice_from_order(context: any, doc: any) {
+export async function update_invoice_from_order(context: any, doc: any, save = true) {
 	if (isOffline()) {
 		context.invoice_doc = Object.assign({}, context.invoice_doc || {}, doc);
 		return context.invoice_doc;
@@ -176,6 +177,7 @@ export async function update_invoice_from_order(context: any, doc: any) {
 			method: "posawesome.posawesome.api.invoices.update_invoice_from_order",
 			args: {
 				data: doc,
+				save: save ? 1 : 0,
 			},
 		});
 
@@ -211,7 +213,7 @@ export async function update_invoice_from_order(context: any, doc: any) {
 	}
 }
 
-export async function process_invoice(context: any) {
+export async function process_invoice(context: any, save = true) {
 	applyReturnDiscountProration(context);
 	const doc = context.get_invoice_doc ? context.get_invoice_doc() : {};
 	_logPriceListDebug(context, "pre-submit", {
@@ -224,7 +226,7 @@ export async function process_invoice(context: any) {
 		items_before: _buildPriceListSnapshot(context, doc.items),
 	});
 	try {
-		const updated_doc = await update_invoice(context, doc);
+		const updated_doc = await update_invoice(context, doc, save);
 		if (updated_doc && updated_doc.posting_date) {
 			context.posting_date = context.formatDateForBackend
 				? context.formatDateForBackend(updated_doc.posting_date)
@@ -242,10 +244,10 @@ export async function process_invoice(context: any) {
 	}
 }
 
-export async function process_invoice_from_order(context: any) {
+export async function process_invoice_from_order(context: any, save = true) {
 	try {
 		const doc = await context.get_invoice_from_order_doc();
-		return await update_invoice_from_order(context, doc);
+		return await update_invoice_from_order(context, doc, save);
 	} catch (error: any) {
 		console.error("Error in process_invoice_from_order:", error);
 		const errorMessage = extractServerErrorMessage(context, error);

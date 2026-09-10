@@ -58,14 +58,22 @@ export async function show_payment(context: any) {
 			context.invoice_doc.doctype === "Sales Order" &&
 			context.invoiceType === "Invoice"
 		) {
-			invoice_doc = context.get_invoice_from_order_doc
-				? await context.get_invoice_from_order_doc()
-				: (context.get_invoice_doc ? context.get_invoice_doc() : {});
+			if (typeof context.process_invoice_from_order === "function") {
+				invoice_doc = await context.process_invoice_from_order(false);
+			} else {
+				invoice_doc = context.get_invoice_from_order_doc
+					? await context.get_invoice_from_order_doc()
+					: (context.get_invoice_doc ? context.get_invoice_doc() : {});
+			}
 		} else {
 			if (typeof context.applyReturnDiscountProration === "function") {
 				context.applyReturnDiscountProration();
 			}
-			invoice_doc = context.get_invoice_doc ? context.get_invoice_doc() : {};
+			if (typeof context.process_invoice === "function") {
+				invoice_doc = await context.process_invoice(false);
+			} else {
+				invoice_doc = context.get_invoice_doc ? context.get_invoice_doc() : {};
+			}
 		}
 
 		if (!invoice_doc) {
@@ -146,6 +154,7 @@ export async function show_payment(context: any) {
 			invoice_doc.posa_refundable_amount = carriedRefundableAmount;
 		}
 
+		context.invoice_doc = invoice_doc;
 		context.eventBus.emit("show_payment", "true");
 		context.eventBus.emit("send_invoice_doc_payment", invoice_doc);
 	} catch (error: any) {
