@@ -1,4 +1,4 @@
-﻿<!-- eslint-disable vue/multi-word-component-names -->
+<!-- eslint-disable vue/multi-word-component-names -->
 <template>
 	<div :class="['payment-shell', { 'payment-shell--dialog': dialogMode }]">
 		<v-card
@@ -599,8 +599,13 @@ const {
 					} else if (isOffline()) {
 						printOfflineInvoice(doc);
 					} else {
+						const printDoc = Object.assign({}, doc, {
+							name: printOptions.name || doc?.name,
+							doctype: printOptions.doctype || doc?.doctype,
+						});
 						loadPrintPage({
-							doc,
+							doc: printDoc,
+							name: printOptions.name || doc?.name,
 							doctype: printOptions.doctype,
 						});
 					}
@@ -1620,8 +1625,13 @@ const submitInvoiceWrapper = async (print, callbackOverrides = {}, options = {})
 					} else if (isOffline()) {
 						printOfflineInvoice(doc);
 					} else {
+						const printDoc = Object.assign({}, doc, {
+							name: printOptions.name || doc?.name,
+							doctype: printOptions.doctype || doc?.doctype,
+						});
 						loadPrintPage({
-							doc,
+							doc: printDoc,
+							name: printOptions.name || doc?.name,
 							doctype: printOptions.doctype,
 						});
 					}

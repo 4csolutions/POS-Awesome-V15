@@ -954,6 +954,13 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			}
 
 			// Success
+			if (doc && responseInvoiceName) {
+				doc.name = responseInvoiceName;
+			}
+			if (doc && submittedDoctype && !doc.doctype) {
+				doc.doctype = submittedDoctype;
+			}
+
 			if (
 				print &&
 				onPrint &&
@@ -973,10 +980,13 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 
 			if (stores?.invoiceStore?.invoiceDoc) {
 				stores.invoiceStore.invoiceDoc.docstatus = 1;
+				if (responseInvoiceName) {
+					stores.invoiceStore.invoiceDoc.name = responseInvoiceName;
+				}
 			}
 
 			if (stores?.uiStore) {
-				stores.uiStore.setLastInvoice(doc.name);
+				stores.uiStore.setLastInvoice(doc?.name || responseInvoiceName);
 			}
 
 			if (!waitForInvoiceProcessing) {

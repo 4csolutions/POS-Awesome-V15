@@ -22,8 +22,12 @@ export interface PaymentPrintingOptions {
 export function usePaymentPrinting(options: PaymentPrintingOptions) {
 	const { invoiceDoc, posProfile, invoiceType, printFormat } = options;
 
-	const resolvePrintContext = (input: { doc?: any; doctype?: string } = {}) => {
+	const resolvePrintContext = (input: { doc?: any; doctype?: string; name?: string } = {}) => {
 		const doc = input.doc || unref(invoiceDoc);
+		const docName = input.name || doc?.name;
+		if (doc && docName && !doc.name) {
+			doc.name = docName;
+		}
 		const profile = unref(posProfile);
 		const type = unref(invoiceType);
 		const pFormatOverride = unref(printFormat);
@@ -40,6 +44,7 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 
 		return {
 			doc,
+			docName,
 			profile,
 			doctype,
 			print_format,
@@ -81,8 +86,9 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 		win.print();
 	};
 
-	const loadPrintPage = async (input: { doc?: any; doctype?: string } = {}) => {
-		const { doc, profile, doctype, print_format, letter_head } = resolvePrintContext(input);
+	const loadPrintPage = async (input: { doc?: any; doctype?: string; name?: string } = {}) => {
+		const { doc, docName, profile, doctype, print_format, letter_head } = resolvePrintContext(input);
+		const targetInvoiceName = docName || doc?.name;
 		const debugPrint = isDebugPrintEnabled();
 
 		// Keep printview auto-trigger disabled; watchPrintWindow/silentPrint owns
@@ -92,7 +98,7 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 			"/printview?doctype=" +
 			encodeURIComponent(doctype) +
 			"&name=" +
-			doc.name +
+			encodeURIComponent(targetInvoiceName || "") +
 			"&trigger_print=0" +
 			"&format=" +
 			print_format +
@@ -125,7 +131,7 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 				"/printview?doctype=" +
 				encodeURIComponent(doctype) +
 				"&name=" +
-				doc.name +
+				encodeURIComponent(targetInvoiceName || "") +
 				"&trigger_print=0" +
 				"&format=" +
 				print_format;
@@ -155,7 +161,7 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 				try {
 					await printDocumentViaQz({
 						doctype,
-						name: doc.name,
+						name: targetInvoiceName,
 						printFormat: print_format || "Standard",
 						letterhead: profile.letter_head || null,
 						noLetterhead: letter_head,
