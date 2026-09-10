@@ -7,9 +7,9 @@
 				color="primary"
 				:label="frappe._('Net Total')"
 				class="sleek-field pos-themed-input"
-				:model-value="formatCurrency(invoice_doc.net_total, displayCurrency)"
+				:model-value="formatCurrency(invoice_doc.net_total)"
 				readonly
-				:prefix="currencySymbol()"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -21,9 +21,9 @@
 				:label="frappe._('Tax and Charges')"
 				class="sleek-field pos-themed-input"
 				hide-details
-				:model-value="formatCurrency(invoice_doc.total_taxes_and_charges, displayCurrency)"
+				:model-value="formatCurrency(invoice_doc.total_taxes_and_charges)"
 				readonly
-				:prefix="currencySymbol()"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -35,9 +35,9 @@
 				:label="frappe._('Total Amount')"
 				class="sleek-field pos-themed-input"
 				hide-details
-				:model-value="formatCurrency(invoice_doc.total, displayCurrency)"
+				:model-value="formatCurrency(invoice_doc.total)"
 				readonly
-				:prefix="currencySymbol()"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -50,10 +50,10 @@
 				class="sleek-field pos-themed-input"
 				hide-details
 				:model-value="
-					formatCurrency(diff_payment < 0 ? -diff_payment : diff_payment, displayCurrency)
+					formatCurrency(diff_payment < 0 ? -diff_payment : diff_payment)
 				"
 				readonly
-				:prefix="currencySymbol()"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -67,7 +67,7 @@
 				hide-details
 				:model-value="formatCurrency(itemDiscountTotal)"
 				readonly
-				:prefix="currencySymbol(invoice_doc.currency)"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			>
 				<template #append-inner>
@@ -104,7 +104,7 @@
 				hide-details
 				:model-value="formatCurrency(invoice_doc.discount_amount)"
 				readonly
-				:prefix="currencySymbol(invoice_doc.currency)"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -118,7 +118,7 @@
 				hide-details
 				:model-value="formatCurrency(totalDiscountAmount)"
 				readonly
-				:prefix="currencySymbol(invoice_doc.currency)"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -132,7 +132,7 @@
 				hide-details
 				:model-value="formatCurrency(invoice_doc.grand_total)"
 				readonly
-				:prefix="currencySymbol(invoice_doc.currency)"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>
@@ -146,7 +146,7 @@
 				hide-details
 				:model-value="formatCurrency(invoice_doc.rounded_total)"
 				readonly
-				:prefix="currencySymbol(invoice_doc.currency)"
+				:prefix="currencySymbol(displayCurrency || invoice_doc.currency)"
 				persistent-placeholder
 			></v-text-field>
 		</v-col>

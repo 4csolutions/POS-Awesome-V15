@@ -31,6 +31,34 @@ export function isRtl(): boolean {
 }
 
 /**
+ * Safely resolves currency symbol with fallback to POS profile or sysdefaults.
+ */
+export function getCurrencySymbol(currency?: string): string {
+	let curr = currency;
+	if (!curr) {
+		try {
+			const uiStore = useUIStore();
+			curr =
+				uiStore.posProfile?.currency ||
+				(typeof frappe !== "undefined" &&
+					frappe?.boot?.sysdefaults?.currency) ||
+				"";
+		} catch {
+			curr =
+				(typeof frappe !== "undefined" &&
+					frappe?.boot?.sysdefaults?.currency) ||
+				"";
+		}
+	}
+	if (!curr) return "";
+	const symbol =
+		typeof get_currency_symbol === "function"
+			? get_currency_symbol(curr)
+			: "";
+	return symbol || curr || "";
+}
+
+/**
  * Determine if the user prefers Western numerals even in RTL.
  */
 export function useWestern(): boolean {
@@ -311,8 +339,8 @@ export function useFormat() {
 		return toArabicNumerals(formatted);
 	};
 
-	const currencySymbol = (currency: string): string => {
-		return get_currency_symbol(currency);
+	const currencySymbol = (currency?: string): string => {
+		return getCurrencySymbol(currency);
 	};
 
 	const isNumber = (value: any): boolean | string => {
@@ -467,8 +495,8 @@ export default {
 			});
 			return toArabicNumerals(formatted);
 		},
-		currencySymbol(currency: string): string {
-			return get_currency_symbol(currency);
+		currencySymbol(currency?: string): string {
+			return getCurrencySymbol(currency);
 		},
 		isNumber(value: any): boolean | string {
 			const westernValue = fromArabicNumerals(String(value));

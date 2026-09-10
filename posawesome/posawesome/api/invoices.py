@@ -191,7 +191,7 @@ def delete_sales_invoice(sales_invoice):
 
 
 @frappe.whitelist()
-def update_invoice_from_order(data):
+def update_invoice_from_order(data, save=1):
     """Backward-compatible facade used by order-to-invoice flow."""
 
-    return update_invoice(data)
+    return update_invoice(data, save=save)

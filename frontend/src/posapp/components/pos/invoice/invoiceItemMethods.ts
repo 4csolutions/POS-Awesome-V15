@@ -301,17 +301,17 @@ const invoiceItemMethods: Record<string, unknown> &
 	},
 
 	// Server
-	update_invoice(doc) {
-		return Server.update_invoice(this, doc);
+	update_invoice(doc, save = true) {
+		return Server.update_invoice(this, doc, save);
 	},
-	update_invoice_from_order(doc) {
-		return Server.update_invoice_from_order(this, doc);
+	update_invoice_from_order(doc, save = true) {
+		return Server.update_invoice_from_order(this, doc, save);
 	},
-	process_invoice() {
-		return Server.process_invoice(this);
+	process_invoice(save = true) {
+		return Server.process_invoice(this, save);
 	},
-	process_invoice_from_order() {
-		return Server.process_invoice_from_order(this);
+	process_invoice_from_order(save = true) {
+		return Server.process_invoice_from_order(this, save);
 	},
 	reload_current_invoice_from_backend() {
 		return Server.reload_current_invoice_from_backend(this);

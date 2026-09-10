@@ -50,6 +50,16 @@ class FakeDoc:
     def get(self, key, default=None):
         return self._data.get(key, default)
 
+    def set(self, key, value):
+        self._data[key] = value
+
+    def append(self, key, value=None):
+        if key not in self._data or not isinstance(self._data[key], list):
+            self._data[key] = []
+        child = FakeDoc(**value) if isinstance(value, dict) else (value or FakeDoc())
+        self._data[key].append(child)
+        return child
+
     def update(self, other=None, **kwargs):
         if other:
             if isinstance(other, dict):
@@ -64,9 +74,15 @@ class FakeDoc:
         return 2
 
     def set_missing_values(self):
+        fn = self._data.get("set_missing_values")
+        if callable(fn):
+            return fn()
         return None
 
     def calculate_taxes_and_totals(self):
+        fn = self._data.get("calculate_taxes_and_totals")
+        if callable(fn):
+            return fn()
         return None
 
     def as_dict(self):
@@ -325,6 +341,129 @@ class TestUpdateInvoiceReturnPayments(unittest.TestCase):
         self.assertEqual(invoice_doc.payments[0].base_amount, -125)
         self.assertEqual(result["paid_amount"], -125)
         self.assertEqual(result["base_paid_amount"], -125)
+
+    def test_update_invoice_preserves_incoming_payments_across_set_missing_values(self):
+        invoice_doc = FakeDoc(
+            doctype="Sales Invoice",
+            name="ACC-SINV-PAY-0001",
+            pos_profile="Main POS",
+            company="Test Company",
+            currency="USD",
+            posting_date="2026-03-21",
+            is_return=0,
+            return_against=None,
+            items=[],
+            payments=[
+                FakeDoc(
+                    mode_of_payment="Cash",
+                    amount=150.0,
+                    base_amount=150.0,
+                )
+            ],
+            taxes=[],
+            flags=types.SimpleNamespace(ignore_pricing_rule=False, ignore_permissions=False),
+            total=150.0,
+            net_total=150.0,
+            grand_total=150.0,
+            rounded_total=150.0,
+            discount_amount=0,
+            paid_amount=0,
+            base_paid_amount=0,
+            conversion_rate=1,
+            plc_conversion_rate=1,
+            price_list_currency="USD",
+        )
+
+        def mock_set_missing_values():
+            invoice_doc.payments = [
+                FakeDoc(
+                    mode_of_payment="Cash",
+                    amount=0.0,
+                    base_amount=0.0,
+                )
+            ]
+
+        invoice_doc.set_missing_values = mock_set_missing_values
+
+        self.creation.frappe.get_doc = lambda data: invoice_doc
+        self.creation.frappe.db.get_value = lambda *args, **kwargs: 0
+        self.creation.frappe.db.exists = lambda *args, **kwargs: True
+        self.creation._save_draft_with_latest_timestamp = lambda doc: doc
+
+        res = self.creation.update_invoice(
+            json.dumps(
+                {
+                    "doctype": "Sales Invoice",
+                    "pos_profile": "Main POS",
+                    "company": "Test Company",
+                    "customer": "CUST-0001",
+                    "currency": "USD",
+                    "payments": [
+                        {
+                            "mode_of_payment": "Cash",
+                            "amount": 150.0,
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertEqual(len(invoice_doc.payments), 1)
+        self.assertEqual(invoice_doc.payments[0].amount, 150.0)
+
+    def test_update_invoice_dry_run_skips_saving_and_clears_name(self):
+        saved = []
+        calculated = []
+
+        invoice_doc = FakeDoc(
+            doctype="Sales Invoice",
+            name="ACC-SINV-DRY-0001",
+            pos_profile="Main POS",
+            company="Test Company",
+            currency="USD",
+            posting_date="2026-03-21",
+            is_return=0,
+            return_against=None,
+            items=[],
+            payments=[],
+            taxes=[],
+            flags=types.SimpleNamespace(ignore_pricing_rule=False, ignore_permissions=False),
+            total=100.0,
+            net_total=100.0,
+            grand_total=100.0,
+            rounded_total=100.0,
+            discount_amount=0,
+            paid_amount=0,
+            base_paid_amount=0,
+            conversion_rate=1,
+            plc_conversion_rate=1,
+            price_list_currency="USD",
+        )
+        invoice_doc.set_missing_values = lambda: None
+        invoice_doc.calculate_taxes_and_totals = lambda: calculated.append(True)
+
+        self.creation.frappe.get_doc = lambda data: invoice_doc
+        self.creation.frappe.db.get_value = lambda *args, **kwargs: 0
+        self.creation.frappe.db.exists = lambda *args, **kwargs: True
+        self.creation._save_draft_with_latest_timestamp = lambda doc: saved.append(doc)
+
+        res = self.creation.update_invoice(
+            json.dumps(
+                {
+                    "doctype": "Sales Invoice",
+                    "pos_profile": "Main POS",
+                    "company": "Test Company",
+                    "customer": "CUST-0001",
+                    "currency": "USD",
+                    "items": [],
+                }
+            ),
+            save=0,
+        )
+
+        self.assertEqual(len(saved), 0)
+        self.assertTrue(len(calculated) > 0)
+        self.assertIsNone(res.get("name"))
 
     def test_resolve_payment_amounts_recomputes_base_amount_from_server_rate(self):
         payment = FakeDoc(amount=12.34, base_amount=999)

@@ -885,9 +885,10 @@ def _guard_return_cash_refund(invoice_doc):
 
 
 @frappe.whitelist()
-def update_invoice(data):
+def update_invoice(data, save=1):
     currency_cache = {}
     data = json.loads(data)
+    save = cint(save)
     client_request_id = extract_invoice_client_request_id(data)
     if not doctype_supports_client_request_id(data.get("doctype") or "Sales Invoice"):
         strip_invoice_client_request_id(data)
@@ -991,8 +992,25 @@ def update_invoice(data):
 
     _deduplicate_free_items(invoice_doc)
 
+    incoming_payments = [
+        d.as_dict() if hasattr(d, "as_dict") else dict(d)
+        for d in (invoice_doc.payments or [])
+        if flt(getattr(d, "amount", None) or (d.get("amount") if isinstance(d, dict) else 0))
+        or flt(getattr(d, "base_amount", None) or (d.get("base_amount") if isinstance(d, dict) else 0))
+    ]
+
     # Set missing values first
     invoice_doc.set_missing_values()
+    if incoming_payments:
+        if callable(getattr(invoice_doc, "set", None)):
+            invoice_doc.set("payments", [])
+        else:
+            setattr(invoice_doc, "payments", [])
+        for row in incoming_payments:
+            if callable(getattr(invoice_doc, "append", None)):
+                invoice_doc.append("payments", row)
+            else:
+                getattr(invoice_doc, "payments").append(row)
     if effective_price_list:
         invoice_doc.selling_price_list = effective_price_list
 
@@ -1105,10 +1123,16 @@ def update_invoice(data):
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     invoice_doc.docstatus = 0
-    invoice_doc = _run_without_return_outstanding_prompts(
-        invoice_doc,
-        lambda: _save_draft_with_latest_timestamp(invoice_doc),
-    )
+    if save:
+        invoice_doc = _run_without_return_outstanding_prompts(
+            invoice_doc,
+            lambda: _save_draft_with_latest_timestamp(invoice_doc),
+        )
+    else:
+        if hasattr(invoice_doc, "calculate_taxes_and_totals"):
+            invoice_doc.calculate_taxes_and_totals()
+        if not (data or {}).get("name"):
+            invoice_doc.name = None
 
     # Return both the invoice doc and the updated data
     response = invoice_doc.as_dict()
