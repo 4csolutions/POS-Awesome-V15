@@ -27,6 +27,7 @@
 			@update:expanded="handleExpandedUpdate"
 			:search="itemSearch"
 			:custom-filter="customItemFilter"
+			:sort-by="[]"
 		>
 			<template #no-data>
 				<div class="posa-cart-empty-state">

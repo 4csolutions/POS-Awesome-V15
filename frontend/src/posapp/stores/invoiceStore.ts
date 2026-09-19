@@ -380,17 +380,17 @@ export const useInvoiceStore = defineStore("invoice", () => {
 	 * external mutations to the original object do not affect the stored copy.
 	 *
 	 * **Insertion position:**
-	 * - `index >= 0` and within bounds → inserted at that position in `itemOrder`.
-	 * - `index === 0` when the order array is empty → `unshift` (prepend).
-	 * - Any other value (default `-1`) → appended at the end.
+	 * - `index > 0` and within bounds → inserted at that position in `itemOrder`.
+	 * - `index === 0` (default) → `unshift` (prepended to the top of cart).
+	 * - `index === -1` → appended at the end (bottom of cart).
 	 *
 	 * Totals are updated via the debounced `triggerUpdateTotals`.
 	 *
 	 * @param item - Cart item to add. Must be a non-null object; null/undefined is a no-op.
-	 * @param index - Insertion position in `itemOrder`. Defaults to `-1` (append).
+	 * @param index - Insertion position in `itemOrder`. Defaults to `0` (prepend).
 	 * @returns The reactive proxy of the stored item, or `undefined` if `item` is falsy.
 	 */
-	const addItem = (item: any, index = -1) => {
+	const addItem = (item: any, index = 0) => {
 		if (!item) return;
 		const rowId =
 			item.posa_row_id || Math.random().toString(36).substring(2, 20);
@@ -399,7 +399,7 @@ export const useInvoiceStore = defineStore("invoice", () => {
 		const cloned = cloneItem(item);
 		itemsData.set(rowId, cloned);
 
-		if (index >= 0 && index < itemOrder.value.length) {
+		if (index > 0 && index < itemOrder.value.length) {
 			itemOrder.value.splice(index, 0, rowId);
 		} else if (index === 0) {
 			itemOrder.value.unshift(rowId);

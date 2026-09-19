@@ -79,7 +79,7 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 		{
 			title: __("Name"),
 			align: "start",
-			sortable: true,
+			sortable: false,
 			key: "item_name",
 			required: true,
 		},

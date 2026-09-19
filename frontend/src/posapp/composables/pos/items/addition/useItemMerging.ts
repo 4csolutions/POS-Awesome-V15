@@ -225,9 +225,9 @@ export function useItemMerging() {
 			}
 		} else {
 			if (context && context.invoiceStore) {
-				context.invoiceStore.addItem(newItem);
+				context.invoiceStore.addItem(newItem, 0);
 			} else {
-				items.push({ ...newItem });
+				items.unshift({ ...newItem });
 			}
 		}
 	}
