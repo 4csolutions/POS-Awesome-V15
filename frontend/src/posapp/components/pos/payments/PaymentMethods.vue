@@ -1,6 +1,10 @@
 <template>
 	<div v-if="payments && payments.length" class="payment-methods">
-		<div v-for="payment in payments" :key="payment.name" class="payment-method-card">
+		<div
+			v-for="payment in payments"
+			:key="payment.name || payment.mode_of_payment"
+			class="payment-method-card"
+		>
 			<div class="payment-method-card__header">
 				<div>
 					<p class="payment-method-card__label">{{ frappe._("Method") }}</p>
