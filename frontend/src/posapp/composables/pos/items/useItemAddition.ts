@@ -361,6 +361,7 @@ export function useItemAddition() {
 			const blockSale = parseBooleanSetting(
 				context.pos_profile?.posa_block_sale_beyond_available_qty,
 			);
+			const isStockItem = parseBooleanSetting(item.is_stock_item);
 			const allowNegativeStock =
 				parseBooleanSetting(
 					context.stock_settings?.allow_negative_stock,
@@ -370,7 +371,7 @@ export function useItemAddition() {
 				!context.isReturnInvoice &&
 				!deferStockValidationToPayment &&
 				blockSale &&
-				item.is_stock_item &&
+				isStockItem &&
 				item.actual_qty <= 0 &&
 				!allowNegativeStock
 			) {
@@ -397,6 +398,7 @@ export function useItemAddition() {
 				!context.isReturnInvoice &&
 				!deferStockValidationToPayment &&
 				blockSale &&
+				isStockItem &&
 				!allowNegativeStock
 			) {
 				const existingItem =
