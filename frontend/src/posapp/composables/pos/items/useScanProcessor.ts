@@ -338,11 +338,11 @@ export function useScanProcessor(context: ScanProcessorContext) {
 					? newItem.actual_qty
 					: null;
 
-		const isStock = parseBooleanSetting(newItem.is_stock_item);
+		const isStockItem = parseBooleanSetting(newItem.is_stock_item);
 		if (
 			!isReturnMode() &&
 			!shouldDeferStockValidation() &&
-			isStock &&
+			isStockItem &&
 			availableQty !== null &&
 			availableQty < requestedQty
 		) {

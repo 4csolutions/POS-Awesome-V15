@@ -49,7 +49,10 @@ export function useCartValidation() {
 				return true;
 			}
 
+			const isStockItem = parseBooleanSetting(item?.is_stock_item);
+
 			if (
+				isStockItem &&
 				item.actual_qty === 0 &&
 				posProfile?.posa_display_items_in_stock &&
 				!isReturnInvoice
@@ -60,8 +63,6 @@ export function useCartValidation() {
 				});
 				return false;
 			}
-
-			const isStockItem = parseBooleanSetting(item?.is_stock_item);
 
 			if (isStockItem && !isReturnInvoice) {
 				const allowNegativeStock =
