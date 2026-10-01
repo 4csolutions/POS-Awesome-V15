@@ -79,6 +79,20 @@
 				</div>
 			</div>
 
+			<ExchangeStatusPanel
+				v-if="exchangeSession"
+				compact
+				:stage="exchangeSession.stage"
+				:return-total="exchangeReturnTotal"
+				:sale-total="exchangeSaleTotal"
+				:currency-symbol="currencySymbol(displayCurrency)"
+				:currency-precision="currencyPrecision"
+				:format-amount="(value) => formatCurrency(value)"
+				:continuing="exchangeContinuing"
+				@continue="$emit('continue-exchange')"
+				@cancel="$emit('cancel-exchange')"
+			/>
+
 			<InvoiceActionButtons
 				presentation="counter-grid"
 				:pos_profile="pos_profile"
@@ -91,6 +105,7 @@
 				:printLoading="printLoading"
 				:paymentLoading="paymentLoading"
 				:customerDisplayLoading="customerDisplayLoading"
+				:exchange-active="exchangeSession?.stage === 'sale'"
 				@save-and-clear="handleSaveAndClear"
 				@load-drafts="handleLoadDrafts"
 				@select-order="handleSelectOrder"
@@ -107,9 +122,10 @@
 
 		<v-row v-else dense class="summary-content">
 			<v-col
-				v-if="!useCompactSaleDock || showReturnDiscountAlert"
+				v-if="!useCompactSaleDock || showReturnDiscountAlert || exchangeSession"
 				cols="12"
 				:md="useCompactSaleDock ? 12 : 7"
+				class="invoice-summary-main"
 			>
 				<v-alert
 					v-if="showReturnDiscountAlert"
@@ -124,7 +140,7 @@
 					{{ formatCurrency(return_discount_meta.prorated_discount) }}
 				</v-alert>
 
-				<div v-if="!useCompactSaleDock" class="summary-hero">
+				<div v-if="!useCompactSaleDock || exchangeSession" class="summary-hero">
 					<div class="summary-hero__copy">
 						<span class="summary-hero__eyebrow">{{ __("Active sale") }}</span>
 						<strong class="summary-hero__amount">
@@ -199,6 +215,20 @@
 						/>
 					</div>
 				</div>
+
+				<ExchangeStatusPanel
+					v-if="exchangeSession"
+					compact
+					:stage="exchangeSession.stage"
+					:return-total="exchangeReturnTotal"
+					:sale-total="exchangeSaleTotal"
+					:currency-symbol="currencySymbol(displayCurrency)"
+					:currency-precision="currencyPrecision"
+					:format-amount="(value) => formatCurrency(value)"
+					:continuing="exchangeContinuing"
+					@continue="$emit('continue-exchange')"
+					@cancel="$emit('cancel-exchange')"
+				/>
 			</v-col>
 
 			<v-col cols="12" :md="useCompactSaleDock ? 12 : 5" class="invoice-summary-actions">
@@ -213,6 +243,7 @@
 					:printLoading="printLoading"
 					:paymentLoading="paymentLoading"
 					:customerDisplayLoading="customerDisplayLoading"
+					:exchange-active="exchangeSession?.stage === 'sale'"
 					@save-and-clear="handleSaveAndClear"
 					@load-drafts="handleLoadDrafts"
 					@select-order="handleSelectOrder"
@@ -318,6 +349,7 @@ import {
 import InvoiceActionButtons from "./InvoiceActionButtons.vue";
 import ParkedOrdersList from "./ParkedOrdersList.vue";
 import DocumentSourceSelector from "../shared/DocumentSourceSelector.vue";
+import ExchangeStatusPanel from "../exchange/ExchangeStatusPanel.vue";
 
 defineOptions({
 	name: "InvoiceSummary",
@@ -336,12 +368,15 @@ const props = defineProps({
 	grossTotal: Number,
 	subtotal: Number,
 	displayCurrency: String,
+	currencyPrecision: { type: Number, default: 2 },
 	formatFloat: Function,
 	formatCurrency: Function,
 	currencySymbol: Function,
 	discount_percentage_offer_name: [String, Number],
 	isNumber: Function,
 	return_discount_meta: Object,
+	exchangeSession: Object,
+	exchangeContinuing: Boolean,
 });
 
 const emit = defineEmits([
@@ -360,6 +395,8 @@ const emit = defineEmits([
 	"open-offers",
 	"open-coupons",
 	"resume-parked-order",
+	"continue-exchange",
+	"cancel-exchange",
 ]);
 
 const saveLoading = ref(false);
@@ -388,6 +425,12 @@ const additionalDiscountPercentageDisplay = ref(
 );
 const isCounterGrid = computed(() => props.presentation === "counter-grid");
 const useCompactSaleDock = computed(() => responsive.windowWidth.value < 1100);
+const exchangeReturnTotal = computed(() =>
+	Number(props.exchangeSession?.returnTotal || Math.abs(Number(props.subtotal || 0))),
+);
+const exchangeSaleTotal = computed(() =>
+	props.exchangeSession?.stage === "sale" ? Math.abs(Number(props.subtotal || 0)) : 0,
+);
 const showDesktopDrafts = computed(() => Boolean(responsive.isDesktop.value));
 const showReturnDiscountAlert = computed(
 	() =>
@@ -792,7 +835,8 @@ defineExpose({
 	position: sticky;
 	bottom: 0;
 	z-index: 9;
-	box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
+	border: 1px solid var(--pos-border-light);
+	box-shadow: var(--pos-elevation-2);
 }
 
 .sticky-summary-card--dock-safe {
@@ -804,16 +848,25 @@ defineExpose({
 }
 
 .summary-hero {
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 14px;
-	padding: 14px 16px;
-	border-radius: 20px;
-	background:
-		linear-gradient(135deg, rgba(var(--v-theme-primary), 0.12), rgba(var(--v-theme-success), 0.08)),
-		var(--pos-surface-muted);
-	border: 1px solid rgba(var(--v-theme-primary), 0.12);
+	padding: 15px 16px 15px 20px;
+	border-radius: var(--pos-radius-md);
+	background: var(--pos-surface-muted);
+	border: 1px solid var(--pos-border-light);
+	overflow: hidden;
+}
+
+.summary-hero::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	width: 5px;
+	background: var(--pos-primary);
 }
 
 .summary-hero__copy {
@@ -825,15 +878,18 @@ defineExpose({
 
 .summary-hero__eyebrow {
 	font-size: 0.72rem;
-	font-weight: 700;
+	font-weight: 750;
 	text-transform: uppercase;
-	letter-spacing: 0;
+	letter-spacing: 0.08em;
 	color: var(--pos-text-secondary);
 }
 
 .summary-hero__amount {
-	font-size: clamp(1.2rem, 2vw, 1.8rem);
+	font-family: var(--pos-font-display);
+	font-size: clamp(1.35rem, 2vw, 1.9rem);
+	font-weight: 750;
 	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
 	color: var(--pos-text-primary);
 }
 
@@ -855,12 +911,11 @@ defineExpose({
 }
 
 .summary-field {
-	transition: all 0.2s ease;
+	transition: box-shadow 140ms ease;
 }
 
 .summary-field:hover {
-	transform: translateY(-1px);
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 0 0 1px var(--pos-border);
 }
 
 .summary-field--alert {

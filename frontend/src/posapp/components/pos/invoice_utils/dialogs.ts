@@ -155,6 +155,14 @@ export async function show_payment(context: any) {
 		if (carriedRefundableAmount != null && invoice_doc) {
 			invoice_doc.posa_refundable_amount = carriedRefundableAmount;
 		}
+		const exchangeSession = context.invoiceStore?.exchangeSession;
+		if (exchangeSession?.stage === "sale" && exchangeSession.returnDoc) {
+			if (exchangeSession.returnDoc.customer !== invoice_doc.customer) {
+				throw new Error(__("Replacement sale customer must match the return customer."));
+			}
+			invoice_doc.posa_exchange_credit = Number(exchangeSession.returnTotal || 0);
+			invoice_doc.posa_exchange_request_id = exchangeSession.clientRequestId;
+		}
 
 		context.eventBus.emit("show_payment", "true");
 		context.eventBus.emit("send_invoice_doc_payment", invoice_doc);
@@ -394,6 +402,8 @@ export async function change_price_list_rate(
 					price_list: priceList,
 					rate: nextRate,
 					uom: item.uom || item.stock_uom || undefined,
+					pos_profile: context.pos_profile?.name,
+					customer: context.customer || undefined,
 				},
 			});
 			item._price_list_rate_persisted = true;

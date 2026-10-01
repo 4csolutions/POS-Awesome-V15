@@ -21,7 +21,7 @@ for unit testing but are not part of the public API contract — they may change
 
 > **applyLocalPricingRules**(`params`): `object`
 
-Defined in: [lib/pricingEngine.ts:759](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L759)
+Defined in: [lib/pricingEngine.ts:768](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L768)
 
 #### Parameters
 
@@ -81,7 +81,7 @@ Defined in: [lib/pricingEngine.ts:759](https://github.com/NEOTECHISS/POS-Awesome
 
 > **collectCandidates**(`item?`, `indexBundle?`): `AnyRecord`[]
 
-Defined in: [lib/pricingEngine.ts:168](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L168)
+Defined in: [lib/pricingEngine.ts:174](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L174)
 
 Collects all pricing-rule candidates applicable to `item` from the pre-built index.
 
@@ -112,7 +112,7 @@ Pre-built lookup maps produced by `usePricingRulesStore`.
 
 > **computeFreeItems**(`params`): `AnyRecord`[]
 
-Defined in: [lib/pricingEngine.ts:773](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L773)
+Defined in: [lib/pricingEngine.ts:782](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L782)
 
 #### Parameters
 
@@ -176,11 +176,12 @@ Defined in: [lib/pricingEngine.ts:773](https://github.com/NEOTECHISS/POS-Awesome
 
 > **evaluatePricingRules**(`__namedParameters`): `object`
 
-Defined in: [lib/pricingEngine.ts:528](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L528)
+Defined in: [lib/pricingEngine.ts:534](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L534)
 
 Evaluates all applicable pricing rules for a single cart item in one pass.
 
 Returns two independent results:
+
 - `pricing` — the final rate and accumulated discount after applying non-free-item rules.
 - `freebies` — zero or more free-item records to be added to the invoice by the caller.
 
@@ -189,6 +190,7 @@ Rules are applied in priority order determined by [ruleSort](#rulesort). A rule 
 controls whether subsequent rules are also applied.
 
 Input fields (all part of the single destructured argument):
+
 - `item` — cart item to evaluate; must have `item_code`, `item_group`, and `brand`.
 - `qty` — line quantity (UOM-adjusted). Defaults to `item.qty`.
 - `docQty` — document-level quantity used for threshold checks.
@@ -266,7 +268,7 @@ Input fields (all part of the single destructured argument):
 
 > **evaluateTransactionPricingRules**(`__namedParameters`): `object`
 
-Defined in: [lib/pricingEngine.ts:727](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L727)
+Defined in: [lib/pricingEngine.ts:736](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L736)
 
 Evaluates rules whose ERPNext scope is the whole transaction exactly once.
 Transaction rules are header-level rules: their quantity and amount thresholds
@@ -322,7 +324,7 @@ use cart totals and a fixed discount amount must not be repeated per item/qty.
 
 > **inDateRange**(`currentDate`, `start`, `end`): `boolean`
 
-Defined in: [lib/pricingEngine.ts:57](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L57)
+Defined in: [lib/pricingEngine.ts:57](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L57)
 
 Returns `true` when `currentDate` falls within the `[start, end]` range.
 A missing `start` or `end` is treated as unbounded. A missing or unparseable
@@ -352,7 +354,7 @@ A missing `start` or `end` is treated as unbounded. A missing or unparseable
 
 > **matchParty**(`rule`, `customer`, `customerGroup`, `territory`): `boolean`
 
-Defined in: [lib/pricingEngine.ts:92](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L92)
+Defined in: [lib/pricingEngine.ts:92](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L92)
 
 Returns `true` when the pricing rule's customer/group/territory restrictions are
 satisfied by the current invoice context.
@@ -386,7 +388,7 @@ A rule with no restrictions on a dimension always passes that dimension's check.
 
 > **matchPriceListAndCurrency**(`rule`, `priceList`, `currency`): `boolean`
 
-Defined in: [lib/pricingEngine.ts:123](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L123)
+Defined in: [lib/pricingEngine.ts:123](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L123)
 
 #### Parameters
 
@@ -408,11 +410,33 @@ Defined in: [lib/pricingEngine.ts:123](https://github.com/NEOTECHISS/POS-Awesome
 
 ***
 
+### matchUom()
+
+> **matchUom**(`rule`, `item`): `boolean`
+
+Defined in: [lib/pricingEngine.ts:143](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L143)
+
+#### Parameters
+
+##### rule
+
+`AnyRecord`
+
+##### item
+
+`AnyRecord`
+
+#### Returns
+
+`boolean`
+
+***
+
 ### round()
 
 > **round**(`value`, `precision?`): `number`
 
-Defined in: [lib/pricingEngine.ts:40](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L40)
+Defined in: [lib/pricingEngine.ts:40](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L40)
 
 Rounds `value` to `precision` decimal places using symmetric (half-up) rounding.
 Non-finite inputs return `0`.
@@ -437,7 +461,7 @@ Non-finite inputs return `0`.
 
 > **ruleSort**(`a`, `b`): `number`
 
-Defined in: [lib/pricingEngine.ts:212](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L212)
+Defined in: [lib/pricingEngine.ts:218](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L218)
 
 #### Parameters
 
@@ -459,7 +483,7 @@ Defined in: [lib/pricingEngine.ts:212](https://github.com/NEOTECHISS/POS-Awesome
 
 > **PricingRuleIndexBundle** = `object`
 
-Defined in: [lib/pricingEngine.ts:18](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L18)
+Defined in: [lib/pricingEngine.ts:18](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L18)
 
 #### Properties
 
@@ -467,28 +491,28 @@ Defined in: [lib/pricingEngine.ts:18](https://github.com/NEOTECHISS/POS-Awesome-
 
 > `optional` **byBrand?**: `Map`\<`string`, `AnyRecord`[]\>
 
-Defined in: [lib/pricingEngine.ts:21](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L21)
+Defined in: [lib/pricingEngine.ts:21](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L21)
 
 ##### byGroup?
 
 > `optional` **byGroup?**: `Map`\<`string`, `AnyRecord`[]\>
 
-Defined in: [lib/pricingEngine.ts:20](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L20)
+Defined in: [lib/pricingEngine.ts:20](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L20)
 
 ##### byItem?
 
 > `optional` **byItem?**: `Map`\<`string`, `AnyRecord`[]\>
 
-Defined in: [lib/pricingEngine.ts:19](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L19)
+Defined in: [lib/pricingEngine.ts:19](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L19)
 
 ##### general?
 
 > `optional` **general?**: `AnyRecord`[]
 
-Defined in: [lib/pricingEngine.ts:22](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L22)
+Defined in: [lib/pricingEngine.ts:22](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L22)
 
 ##### preSorted?
 
 > `optional` **preSorted?**: `boolean`
 
-Defined in: [lib/pricingEngine.ts:23](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/lib/pricingEngine.ts#L23)
+Defined in: [lib/pricingEngine.ts:23](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/lib/pricingEngine.ts#L23)

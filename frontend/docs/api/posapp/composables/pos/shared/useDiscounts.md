@@ -12,7 +12,7 @@
 
 > **useDiscounts**(): `object`
 
-Defined in: [posapp/composables/pos/shared/useDiscounts.ts:21](https://github.com/NEOTECHISS/POS-Awesome-V15/blob/a5f17aa52f3a3569feac1351d15e0cdaf655c044/frontend/src/posapp/composables/pos/shared/useDiscounts.ts#L21)
+Defined in: [posapp/composables/pos/shared/useDiscounts.ts:21](https://github.com/defendicon/POS-Awesome-V15/blob/b841aa1d6d7678aabf664b452c73c2f5ed8d8758/frontend/src/posapp/composables/pos/shared/useDiscounts.ts#L21)
 
 #### Returns
 
@@ -68,10 +68,11 @@ Cart item to update. Expected to have `price_list_rate`, `rate`,
 `any`
 
 Calculation context. Required fields:
-  - `currency_precision` (number).
-  - `flt(value, precision)` — rounding function.
-  - `conversion_rate` (number) — used by `toBaseCurrency`/`toSelectedCurrency`.
-  - `forceUpdate()` — optional; triggers a Vue re-render after mutation.
+
+- `currency_precision` (number).
+- `flt(value, precision)` — rounding function.
+- `conversion_rate` (number) — used by `toBaseCurrency`/`toSelectedCurrency`.
+- `forceUpdate()` — optional; triggers a Vue re-render after mutation.
 
 ###### Returns
 
@@ -110,6 +111,7 @@ falsy, the function returns immediately.
   3. Derives `base_rate` = `base_price_list_rate − base_discount_amount`, then converts to `rate`.
 
 **Common guards applied after the switch:**
+
 - Negative input values are rejected (set to 0) with a toast.
 - If the computed `rate` would go below zero, all fields are set to represent 100 % discount.
 - For offer-constrained items (`item._offer_constraints`), `enforceOfferPriceLimits`
@@ -143,12 +145,13 @@ The DOM input event. `$event.target.id` must be one of the field IDs above.
 `any`
 
 Calculation context. Required fields:
-  - `currency_precision` (number) — decimal places for currency values.
-  - `float_precision` (number) — decimal places for percentage / float values.
-  - `flt(value, precision)` — rounding function (typically `frappe.utils.flt`).
-  - `conversion_rate` (number) — exchange rate used by `toBaseCurrency`/`toSelectedCurrency`.
-  - `calc_stock_qty(item, qty)` — optional; called after price update.
-  - `forceUpdate()` — optional; triggers a Vue re-render.
+
+- `currency_precision` (number) — decimal places for currency values.
+- `float_precision` (number) — decimal places for percentage / float values.
+- `flt(value, precision)` — rounding function (typically `frappe.utils.flt`).
+- `conversion_rate` (number) — exchange rate used by `toBaseCurrency`/`toSelectedCurrency`.
+- `calc_stock_qty(item, qty)` — optional; called after price update.
+- `forceUpdate()` — optional; triggers a Vue re-render.
 
 ###### Returns
 
@@ -164,6 +167,7 @@ from `context.additional_discount_percentage`.
 **Mutates `context` in-place.** No return value.
 
 Behaviour details:
+
 - If `percentage` is outside `[-100, 100]`, both `additional_discount_percentage`
   and `additional_discount` are reset to `0`.
 - If `pos_profile.posa_max_discount_allowed > 0`, the percentage is clamped to that
@@ -190,11 +194,12 @@ Behaviour details:
 `any`
 
 Mutable context object. Expected fields:
-  - `additional_discount_percentage` (number) — input; may be modified by clamping.
-  - `additional_discount` (number) — output; overwritten by this function.
-  - `Total` (number) — net total used as the discount base.
-  - `isReturnInvoice` (boolean).
-  - `pos_profile` — object with `posa_use_percentage_discount` and `posa_max_discount_allowed`.
+
+- `additional_discount_percentage` (number) — input; may be modified by clamping.
+- `additional_discount` (number) — output; overwritten by this function.
+- `Total` (number) — net total used as the discount base.
+- `isReturnInvoice` (boolean).
+- `pos_profile` — object with `posa_use_percentage_discount` and `posa_max_discount_allowed`.
 
 ###### Returns
 
