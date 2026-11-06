@@ -1166,7 +1166,7 @@ const rebalancePreferredPaymentCoverage = (giftCardAmount = giftCardAppliedAmoun
 	});
 };
 
-const mergeProfilePaymentsIntoReturn = (doc) => {
+const mergeProfilePayments = (doc) => {
 	const profilePayments = buildProfilePaymentLines();
 	if (!profilePayments.length) return;
 
@@ -1200,6 +1200,8 @@ const ensurePaymentLinesInitialized = (doc = invoice_doc.value) => {
 		if (fallbackPayments.length) {
 			doc.payments = fallbackPayments;
 		}
+	} else {
+		mergeProfilePayments(doc);
 	}
 
 	// For returns, always show all profile payment methods so user can split refund
@@ -1208,7 +1210,7 @@ const ensurePaymentLinesInitialized = (doc = invoice_doc.value) => {
 	// failed submit never overrides the cashier's manual toggle. Here we only
 	// honour the current toggle state.
 	if (doc.is_return) {
-		mergeProfilePaymentsIntoReturn(doc);
+		mergeProfilePayments(doc);
 		if (is_credit_return.value) {
 			// Credit return: keep every payment row at 0 so it is recorded as a
 			// credit note that reduces the customer's balance (no cash refund).

@@ -411,6 +411,86 @@ class TestUpdateInvoiceReturnPayments(unittest.TestCase):
         self.assertEqual(len(invoice_doc.payments), 1)
         self.assertEqual(invoice_doc.payments[0].amount, 150.0)
 
+    def test_update_invoice_preserves_zero_amount_payment_methods_across_set_missing_values(self):
+        invoice_doc = FakeDoc(
+            doctype="Sales Invoice",
+            name="ACC-SINV-PAY-0002",
+            pos_profile="Main POS",
+            company="Test Company",
+            currency="USD",
+            posting_date="2026-03-21",
+            is_return=0,
+            return_against=None,
+            items=[],
+            payments=[
+                FakeDoc(
+                    mode_of_payment="Cash",
+                    amount=59.0,
+                    base_amount=59.0,
+                ),
+                FakeDoc(
+                    mode_of_payment="Wire Transfer",
+                    amount=0.0,
+                    base_amount=0.0,
+                ),
+            ],
+            taxes=[],
+            flags=types.SimpleNamespace(ignore_pricing_rule=False, ignore_permissions=False),
+            total=59.0,
+            net_total=59.0,
+            grand_total=59.0,
+            rounded_total=59.0,
+            discount_amount=0,
+            paid_amount=0,
+            base_paid_amount=0,
+            conversion_rate=1,
+            plc_conversion_rate=1,
+            price_list_currency="USD",
+        )
+
+        def mock_set_missing_values():
+            # In ERPNext set_missing_values populates all modes from POS Profile with 0 amount
+            invoice_doc.payments = [
+                FakeDoc(mode_of_payment="Cash", amount=0.0, base_amount=0.0),
+                FakeDoc(mode_of_payment="Wire Transfer", amount=0.0, base_amount=0.0),
+            ]
+
+        invoice_doc.set_missing_values = mock_set_missing_values
+
+        self.creation.frappe.get_doc = lambda data: invoice_doc
+        self.creation.frappe.db.get_value = lambda *args, **kwargs: 0
+        self.creation.frappe.db.exists = lambda *args, **kwargs: True
+        self.creation._save_draft_with_latest_timestamp = lambda doc: doc
+
+        res = self.creation.update_invoice(
+            json.dumps(
+                {
+                    "doctype": "Sales Invoice",
+                    "pos_profile": "Main POS",
+                    "company": "Test Company",
+                    "customer": "CUST-0001",
+                    "currency": "USD",
+                    "payments": [
+                        {
+                            "mode_of_payment": "Cash",
+                            "amount": 59.0,
+                        },
+                        {
+                            "mode_of_payment": "Wire Transfer",
+                            "amount": 0.0,
+                        },
+                    ],
+                }
+            )
+        )
+
+        self.assertEqual(len(invoice_doc.payments), 2)
+        modes = {p.mode_of_payment: p.amount for p in invoice_doc.payments}
+        self.assertIn("Cash", modes)
+        self.assertIn("Wire Transfer", modes)
+        self.assertEqual(modes["Cash"], 59.0)
+        self.assertEqual(modes["Wire Transfer"], 0.0)
+
     def test_update_invoice_dry_run_skips_saving_and_clears_name(self):
         saved = []
         calculated = []

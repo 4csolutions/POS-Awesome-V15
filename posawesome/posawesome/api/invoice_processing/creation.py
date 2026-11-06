@@ -992,25 +992,48 @@ def update_invoice(data, save=1):
 
     _deduplicate_free_items(invoice_doc)
 
-    incoming_payments = [
-        d.as_dict() if hasattr(d, "as_dict") else dict(d)
-        for d in (invoice_doc.payments or [])
-        if flt(getattr(d, "amount", None) or (d.get("amount") if isinstance(d, dict) else 0))
-        or flt(getattr(d, "base_amount", None) or (d.get("base_amount") if isinstance(d, dict) else 0))
-    ]
+    incoming_payments_by_mode = {}
+    for p in (invoice_doc.payments or []):
+        row = p.as_dict() if hasattr(p, "as_dict") else dict(p)
+        mode = row.get("mode_of_payment")
+        if mode:
+            incoming_payments_by_mode[mode] = row
 
     # Set missing values first
     invoice_doc.set_missing_values()
-    if incoming_payments:
-        if callable(getattr(invoice_doc, "set", None)):
-            invoice_doc.set("payments", [])
-        else:
-            setattr(invoice_doc, "payments", [])
-        for row in incoming_payments:
+
+    # Reconcile incoming payment details across set_missing_values()
+    existing_modes = set()
+    for payment in (invoice_doc.payments or []):
+        mode = (
+            getattr(payment, "mode_of_payment", None)
+            or (payment.get("mode_of_payment") if isinstance(payment, dict) else None)
+        )
+        if mode:
+            existing_modes.add(mode)
+            if mode in incoming_payments_by_mode:
+                inc = incoming_payments_by_mode[mode]
+                if hasattr(payment, "amount"):
+                    payment.amount = inc.get("amount", 0)
+                elif isinstance(payment, dict):
+                    payment["amount"] = inc.get("amount", 0)
+                if hasattr(payment, "base_amount") and "base_amount" in inc:
+                    payment.base_amount = inc.get("base_amount", 0)
+                elif isinstance(payment, dict) and "base_amount" in inc:
+                    payment["base_amount"] = inc.get("base_amount", 0)
+                for field in ("default", "account", "type"):
+                    if field in inc and inc[field] is not None:
+                        if hasattr(payment, field):
+                            setattr(payment, field, inc[field])
+                        elif isinstance(payment, dict):
+                            payment[field] = inc[field]
+
+    for mode, inc in incoming_payments_by_mode.items():
+        if mode not in existing_modes:
             if callable(getattr(invoice_doc, "append", None)):
-                invoice_doc.append("payments", row)
-            else:
-                getattr(invoice_doc, "payments").append(row)
+                invoice_doc.append("payments", inc)
+            elif hasattr(invoice_doc, "payments") and isinstance(invoice_doc.payments, list):
+                invoice_doc.payments.append(inc)
     if effective_price_list:
         invoice_doc.selling_price_list = effective_price_list
 
