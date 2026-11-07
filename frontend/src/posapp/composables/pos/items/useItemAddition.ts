@@ -537,6 +537,8 @@ export function useItemAddition() {
 							const first = allocations[0];
 							if (first) {
 								new_item.qty = first.qty;
+								calcStockQty(new_item, new_item.qty);
+								updateLineAmounts(new_item, context);
 								callSetBatchQty(
 									context,
 									new_item,

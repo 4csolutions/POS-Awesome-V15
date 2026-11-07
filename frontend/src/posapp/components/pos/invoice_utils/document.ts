@@ -567,7 +567,6 @@ export function get_invoice_items(context: any) {
 				null,
 			stock_uom: item.stock_uom || item.uom,
 			stock_qty:
-				item.stock_qty ||
 				flt(item.qty) * flt(item.conversion_factor || 1),
 			allow_negative_stock: item.allow_negative_stock,
 			has_serial_no: item.has_serial_no,

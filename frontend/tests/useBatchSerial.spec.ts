@@ -263,4 +263,62 @@ describe("useBatchSerial.setBatchQty", () => {
 		expect(item.amount).toBe(30);
 		expect(item.base_amount).toBe(30);
 	});
+
+	it("does not override an explicitly requested batch with the first batch", () => {
+		const { setBatchQty } = useBatchSerial();
+		const context: any = {
+			items: [],
+			price_list_currency: "USD",
+			selected_currency: "USD",
+			exchange_rate: 1,
+			currency_precision: 2,
+			flt: (value: any) => Number(value),
+			forceUpdate: vi.fn(),
+		};
+
+		const item: any = {
+			item_code: "ITEM-MULTI-BATCH",
+			qty: 5,
+			has_batch_no: 1,
+			batch_no: "BATCH-2",
+			batch_no_data: [
+				{ batch_no: "BATCH-1", available_qty: 10, is_expired: false },
+				{ batch_no: "BATCH-2", available_qty: 10, is_expired: false },
+			],
+		};
+
+		setBatchQty(item, "BATCH-2", false, context);
+
+		expect(item.batch_no).toBe("BATCH-2");
+	});
+
+	it("deducts batch quantity used by other rows of the same item in cart", () => {
+		const { getBatchAvailability } = useBatchSerial();
+		const context: any = {
+			items: [
+				{
+					posa_row_id: "row-1",
+					item_code: "ITEM-A",
+					qty: 10,
+					batch_no: "BATCH-1",
+				},
+			],
+		};
+
+		const secondRowItem: any = {
+			posa_row_id: "row-2",
+			item_code: "ITEM-A",
+			batch_no_data: [
+				{ batch_no: "BATCH-1", batch_qty: 10, is_expired: false },
+				{ batch_no: "BATCH-2", batch_qty: 10, is_expired: false },
+			],
+		};
+
+		const availability = getBatchAvailability(secondRowItem, context);
+		const b1 = availability.find((b: any) => b.batch_no === "BATCH-1");
+		const b2 = availability.find((b: any) => b.batch_no === "BATCH-2");
+
+		expect(b1.available_qty).toBe(0);
+		expect(b2.available_qty).toBe(10);
+	});
 });
