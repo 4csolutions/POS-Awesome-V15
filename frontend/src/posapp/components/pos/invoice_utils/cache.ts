@@ -19,7 +19,9 @@ export function _getItemDetailCacheKey(context: InvoiceContext, item: any) {
     if (!code || !warehouse) {
         return null;
     }
-    return `${code}::${warehouse}`;
+    const batch = item?.batch_no ? `::${item.batch_no}` : "";
+    const uom = item?.uom ? `::${item.uom}` : "";
+    return `${code}::${warehouse}${batch}${uom}`;
 }
 
 export function _getCachedItemDetail(context: InvoiceContext, key: string | null) {

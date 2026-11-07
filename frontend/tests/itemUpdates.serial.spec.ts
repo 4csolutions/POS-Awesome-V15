@@ -115,5 +115,48 @@ describe("_applyItemDetailPayload serial preservation", () => {
 		expect(item.discount_percentage).toBe(40);
 		expect(context._applyPriceListRate).not.toHaveBeenCalled();
 	});
+
+	it("preserves explicitly selected batch_no when server payload does not include batch_no", () => {
+		const context: any = {
+			pos_profile: { warehouse: "Main", posa_auto_set_batch: true },
+			price_list_currency: "USD",
+			selected_currency: "USD",
+			currency_precision: 2,
+			flt: (value: any) => Number(value),
+			update_qty_limits: vi.fn(),
+			set_batch_qty: vi.fn(),
+			_getPlcConversionRate: () => 1,
+			_applyPriceListRate: vi.fn(),
+		};
+
+		const item: any = {
+			item_code: "BATCH-ITEM",
+			warehouse: "Main",
+			qty: 5,
+			has_batch_no: 1,
+			batch_no: "BATCH-002",
+			item_uoms: [],
+		};
+
+		const data: any = {
+			stock_uom: "Nos",
+			uom: "Nos",
+			conversion_factor: 1,
+			item_uoms: [{ uom: "Nos", conversion_factor: 1 }],
+			warehouse: "Main",
+			has_batch_no: 1,
+			batch_no: null,
+			is_stock_item: 1,
+			batch_no_data: [
+				{ batch_no: "BATCH-001", batch_qty: 10 },
+				{ batch_no: "BATCH-002", batch_qty: 10 },
+			],
+		};
+
+		_applyItemDetailPayload(context, item, data, {});
+
+		expect(item.batch_no).toBe("BATCH-002");
+		expect(context.set_batch_qty).toHaveBeenCalledWith(item, "BATCH-002", false);
+	});
 });
 

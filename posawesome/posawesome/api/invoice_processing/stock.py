@@ -79,11 +79,16 @@ def _stock_policy_for_item(item, pos_profile=None, global_allow_negative=None):
 
 
 def _requested_stock_qty(item):
+    qty = flt(item.get("qty"))
+    cf = flt(item.get("conversion_factor") or 1)
+    if qty:
+        return qty * (cf if cf > 0 else 1)
+
     requested = flt(item.get("stock_qty"))
     if requested:
         return requested
 
-    return flt(item.get("qty")) * flt(item.get("conversion_factor") or 1)
+    return 0.0
 
 
 def _collect_stock_errors(items, pos_profile=None, include_warnings=False):

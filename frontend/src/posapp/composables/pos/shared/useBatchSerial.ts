@@ -125,10 +125,12 @@ export function useBatchSerial() {
 
 	// Calculate batch availability and sort according to FIFO/Expiry
 	const getBatchAvailability = (item: any, context: any) => {
-		const existing_items = context.items.filter(
-			(element) =>
+		const existing_items = (context?.items || []).filter(
+			(element: any) =>
+				element &&
+				element !== item &&
 				element.item_code == item.item_code &&
-				element.posa_row_id != item.posa_row_id,
+				(!item.posa_row_id || element.posa_row_id != item.posa_row_id),
 		);
 		const source_batches = Array.isArray(item.batch_no_data)
 			? item.batch_no_data
@@ -261,8 +263,7 @@ export function useBatchSerial() {
 				batch_to_use = normalized_batch_data.find(
 					(batch) => batch.batch_no == value,
 				);
-			}
-			if (!batch_to_use) {
+			} else {
 				batch_to_use = selection_pool[0];
 			}
 			if (!batch_to_use) {

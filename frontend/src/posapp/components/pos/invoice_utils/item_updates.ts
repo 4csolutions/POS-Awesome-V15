@@ -3,7 +3,23 @@ import { isOffline } from "../../../../offline/index";
 import { syncReturnDiscountProration } from "./return_discount";
 
 declare const __: (_text: string, _args?: any[]) => string;
+declare const flt: (_value: unknown, _precision?: number) => number;
 declare const frappe: any;
+
+function getFlt(context: any): (_value: unknown, _precision?: number) => number {
+	if (typeof context?.flt === "function") {
+		return (val: unknown, prec?: number) => context.flt(val, prec);
+	}
+	if (typeof flt === "function") {
+		return (val: unknown, prec?: number) => flt(val, prec);
+	}
+	return (val: unknown, prec?: number) => {
+		const num = Number(val);
+		if (!Number.isFinite(num)) return 0;
+		if (prec != null) return Number(num.toFixed(prec));
+		return num;
+	};
+}
 
 function syncLineAmounts(context: any, item: any) {
 	if (!item) return;
@@ -92,8 +108,9 @@ export async function update_items_details(context: any, items: any[]) {
 					item.price_list_currency = updated_item.price_list_currency;
 				}
 
+				const fltVal = getFlt(context);
 				const hasBatchPrice =
-					flt(item.base_batch_price || item.batch_price) > 0;
+					fltVal(item.base_batch_price || item.batch_price) > 0;
 
 				if (
 					!hasBatchPrice &&
@@ -120,8 +137,8 @@ export async function update_items_details(context: any, items: any[]) {
 						!manualLocked;
 
 					// Preserve existing rate if incoming price is 0 or unavailable
-					const existingItemRate = flt(item.rate);
-					const incomingPriceIsZero = !price || flt(price) <= 0;
+					const existingItemRate = fltVal(item.rate);
+					const incomingPriceIsZero = !price || fltVal(price) <= 0;
 					const itemHasValidRate = existingItemRate > 0;
 					const skipZeroPriceOverride = incomingPriceIsZero && itemHasValidRate;
 
@@ -134,13 +151,13 @@ export async function update_items_details(context: any, items: any[]) {
 									priceCurrency,
 								);
 							}
-							const discountPct = flt(item.discount_percentage);
+							const discountPct = fltVal(item.discount_percentage);
 							if (discountPct > 0) {
-								const basePLR = flt(item.base_price_list_rate);
+								const basePLR = fltVal(item.base_price_list_rate);
 								const baseDiscount = (basePLR * discountPct) / 100;
 								item.base_discount_amount = baseDiscount;
 								item.base_rate = Math.max(basePLR - baseDiscount, 0);
-								const plr = flt(item.price_list_rate);
+								const plr = fltVal(item.price_list_rate);
 								const discount = (plr * discountPct) / 100;
 								item.discount_amount = context.flt
 									? context.flt(discount, context.currency_precision)
@@ -374,7 +391,9 @@ export function _applyItemDetailPayload(
 	if (data.serial_no !== undefined && data.serial_no !== null) {
 		item.serial_no = data.serial_no;
 	}
-	item.batch_no = data.batch_no;
+	if (data.batch_no !== undefined && data.batch_no !== null && !item.batch_no) {
+		item.batch_no = data.batch_no;
+	}
 	item.is_stock_item = data.is_stock_item;
 	item.is_fixed_asset = data.is_fixed_asset;
 	item.allow_alternative_item = data.allow_alternative_item;
@@ -411,7 +430,7 @@ export function _applyItemDetailPayload(
 
 	if (data.barcode) item.barcode = data.barcode;
 	if (data.brand) item.brand = data.brand;
-	if (data.batch_no) item.batch_no = data.batch_no;
+	if (data.batch_no && !item.batch_no) item.batch_no = data.batch_no;
 	if (data.serial_no_data) item.serial_no_data = data.serial_no_data;
 	if (data.batch_no_data) item.batch_no_data = data.batch_no_data;
 
@@ -435,8 +454,9 @@ export function _applyItemDetailPayload(
 		if (context.set_batch_qty) context.set_batch_qty(item, null, false);
 	}
 
+	const fltVal = getFlt(context);
 	const hasBatchPricePayload =
-		flt(item.base_batch_price || item.batch_price) > 0;
+		fltVal(item.base_batch_price || item.batch_price) > 0;
 
 	if (!item.locked_price && !hasBatchPricePayload) {
 		if (forceUpdate || !item.base_rate) {
@@ -444,8 +464,8 @@ export function _applyItemDetailPayload(
 				? context._getPlcConversionRate()
 				: 1;
 			// Preserve existing base rate if incoming price is 0
-			const existingBasePLR = flt(item.base_price_list_rate);
-			const incomingPLR = flt(data.price_list_rate);
+			const existingBasePLR = fltVal(item.base_price_list_rate);
+			const incomingPLR = fltVal(data.price_list_rate);
 			const skipZeroOverride = incomingPLR <= 0 && existingBasePLR > 0;
 			if (!skipZeroOverride && (data.price_list_rate !== 0 || !item.base_price_list_rate)) {
 				item.base_price_list_rate =
@@ -929,7 +949,7 @@ export async function flushBackgroundUpdates(context: any) {
 
 	const itemsToUpdate: any[] = [];
 	const items = context.invoiceStore
-		? context.invoiceStore.items.value
+		? context.invoiceStore.items?.value || context.invoiceStore.items
 		: context.items;
 
 	if (!Array.isArray(items)) return;
