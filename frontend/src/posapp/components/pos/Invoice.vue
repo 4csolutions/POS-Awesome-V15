@@ -470,6 +470,16 @@ export default {
 				}
 			},
 		},
+		ref_practitioner: {
+			get() {
+				return this.patientsStore?.selectedPractitioner || null;
+			},
+			set(value) {
+				if (this.patientsStore?.setSelectedPractitioner) {
+					this.patientsStore.setSelectedPractitioner(value);
+				}
+			},
+		},
 		paymentVisible() {
 			return this.activeView === "payment" || this.uiStore.paymentDialogOpen;
 		},
@@ -822,6 +832,7 @@ export default {
 			this.company = data.company || null;
 			this.customer = data.pos_profile.customer;
 			this.patient = null;
+			this.ref_practitioner = null;
 			this.pos_opening_shift = data.pos_opening_shift;
 			this.stock_settings = data.stock_settings;
 
@@ -831,6 +842,12 @@ export default {
 
 			if (this.patientsStore?.setSelectedPatient) {
 				this.patientsStore.setSelectedPatient(null);
+			}
+			if (this.patientsStore?.setSelectedPractitioner) {
+				this.patientsStore.setSelectedPractitioner(null);
+			}
+			if (this.patientsStore?.setPractitionerLocked) {
+				this.patientsStore.setPractitionerLocked(false);
 			}
 
 			this.invoiceType = this.pos_profile.posa_default_sales_order ? "Order" : "Invoice";

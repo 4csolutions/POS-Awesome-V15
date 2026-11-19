@@ -336,6 +336,7 @@ def get_pending_medication_encounters(patient):
         SELECT DISTINCT
             pe.name,
             pe.encounter_date,
+            pe.practitioner,
             pe.practitioner_name,
             pe.creation
         FROM `tabPatient Encounter` pe
@@ -356,3 +357,18 @@ def get_pending_medication_encounters(patient):
 def get_patients_count(pos_profile):
     filters = {"status": ["!=", "Disabled"]}
     return frappe.db.count("Patient", filters)
+
+
+@frappe.whitelist()
+def get_practitioners():
+    """Fetch active Healthcare Practitioners for POS invoice selection."""
+    if not frappe.db.exists("DocType", "Healthcare Practitioner"):
+        return []
+
+    return frappe.get_all(
+        "Healthcare Practitioner",
+        filters={"status": "Active"},
+        fields=["name", "practitioner_name", "department"],
+        order_by="practitioner_name asc",
+        limit_page_length=0,
+    )

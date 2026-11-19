@@ -126,6 +126,8 @@ function getSerializedProfile(profile: any): string | null {
 export const usePatientsStore = defineStore("patients", () => {
 	const patients = ref<Patient[]>([]);
 	const selectedPatient = ref<string | null>(null);
+	const selectedPractitioner = ref<string | null>(null);
+	const isPractitionerLocked = ref(false);
 	const patientInfo = ref<Record<string, any>>({});
 	const searchTerm = ref("");
 	const page = ref(0);
@@ -202,6 +204,14 @@ export const usePatientsStore = defineStore("patients", () => {
 
 	function setSelectedPatient(name: string | null) {
 		selectedPatient.value = name || null;
+	}
+
+	function setSelectedPractitioner(name: string | null) {
+		selectedPractitioner.value = name || null;
+	}
+
+	function setPractitionerLocked(locked: boolean) {
+		isPractitionerLocked.value = Boolean(locked);
 	}
 
 	function setPatientInfo(info: Record<string, any>) {
@@ -679,6 +689,8 @@ export const usePatientsStore = defineStore("patients", () => {
 	function clearLocalState() {
 		resetPagination();
 		selectedPatient.value = null;
+		selectedPractitioner.value = null;
+		isPractitionerLocked.value = false;
 		patientInfo.value = {};
 		loadProgress.value = 0;
 		totalPatientCount.value = 0;
@@ -692,6 +704,8 @@ export const usePatientsStore = defineStore("patients", () => {
 		patients,
 		filteredPatients,
 		selectedPatient,
+		selectedPractitioner,
+		isPractitionerLocked,
 		patientInfo,
 		searchTerm,
 		page,
@@ -709,6 +723,8 @@ export const usePatientsStore = defineStore("patients", () => {
 		isLoadComplete,
 		setPosProfile,
 		setSelectedPatient,
+		setSelectedPractitioner,
+		setPractitionerLocked,
 		setPatientInfo,
 		searchPatients,
 		queueSearch,

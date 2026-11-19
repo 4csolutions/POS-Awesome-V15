@@ -172,6 +172,12 @@ export async function cancel_invoice(context: any) {
 		context.patientsStore.setSelectedPatient(null);
 		context.patientsStore.setPatientInfo({});
 	}
+	if (context.patientsStore?.setSelectedPractitioner) {
+		context.patientsStore.setSelectedPractitioner(null);
+	}
+	if (context.patientsStore?.setPractitionerLocked) {
+		context.patientsStore.setPractitionerLocked(false);
+	}
 	if (context.eventBus) {
 		context.eventBus.emit("focus_item_search");
 	}

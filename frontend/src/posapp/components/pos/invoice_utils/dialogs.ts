@@ -29,6 +29,17 @@ export async function show_payment(context: any) {
 			return;
 		}
 
+		if (
+			(window.frappe as any)?.boot?.installed_apps?.includes("healthcare") &&
+			!context.ref_practitioner
+		) {
+			context.toastStore.show({
+				title: __(`Select a practitioner`),
+				color: "error",
+			});
+			return;
+		}
+
 		if (!context.items.length) {
 			context.toastStore.show({
 				title: __(`Select items to sell`),

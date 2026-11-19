@@ -168,7 +168,8 @@ const fetchEncounters = async () => {
             const pracStr = enc.practitioner_name ? ` with ${enc.practitioner_name}` : '';
             return {
 			    name: enc.name,
-			    label: `${enc.name}${dateStr}${pracStr}`
+			    label: `${enc.name}${dateStr}${pracStr}`,
+			    practitioner: enc.practitioner || null,
             };
 		});
 	} catch (err) {
@@ -304,7 +305,8 @@ const submit = () => {
 	});
 
 	if (finalItems.length > 0) {
-		emit("add-medications", finalItems);
+		const encounterObj = encounters.value.find(e => e.name === selectedEncounter.value);
+		emit("add-medications", finalItems, encounterObj?.practitioner || null);
 	}
 
 	if (skippedCount > 0) {

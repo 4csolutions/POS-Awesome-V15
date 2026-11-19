@@ -1,10 +1,33 @@
 <template>
 	<v-row align="start" class="items px-3 py-2">
-		<v-col :cols="pos_profile.posa_allow_sales_order ? 9 : 12" class="pb-0 pr-0">
+		<v-col :cols="pos_profile.posa_allow_sales_order ? 9 : 12" class="pb-2">
 			<!-- Patient selection component -->
-			<Patient v-if="isHealthcareInstalled" :pos_profile="pos_profile" class="mb-4" @update:patient="onPatientSelected" />
-			<!-- Customer selection component -->
-			<Customer ref="customerComponent" />
+			<Patient v-if="isHealthcareInstalled" :pos_profile="pos_profile" class="mb-3" @update:patient="onPatientSelected" />
+			<!-- Practitioner selection component -->
+			<div v-if="isHealthcareInstalled" class="practitioner-input-wrapper mb-3">
+				<v-autocomplete
+						v-model="selectedPractitioner"
+						:items="practitioners"
+						item-title="practitioner_name"
+						item-value="name"
+						:label="frappe._('Practitioner *')"
+						prepend-inner-icon="mdi-doctor"
+						density="compact"
+						variant="solo"
+						color="primary"
+						class="sleek-field pos-themed-input w-100"
+						hide-details
+						:clearable="!isPractitionerLocked"
+						:readonly="isPractitionerLocked"
+						:loading="loadingPractitioners"
+					>
+						<template #item="{ props: itemProps, item }">
+							<v-list-item v-bind="itemProps" :subtitle="item.raw.department || item.raw.name"></v-list-item>
+						</template>
+					</v-autocomplete>
+			</div>
+			<!-- Customer selection component (hidden when Healthcare is installed) -->
+			<Customer v-show="!isHealthcareInstalled" ref="customerComponent" />
 
 			<!-- Fetch Medication Requests Button -->
 			<div v-if="isHealthcareInstalled && patientId" class="mt-2 text-right">
@@ -48,11 +71,13 @@
 
 <script setup>
 import { ref, onMounted } from "vue";
+import { storeToRefs } from "pinia";
 import Customer from "../customer/Customer.vue";
 import Patient from "../customer/Patient.vue";
 import FetchMedicationsDialog from "./FetchMedicationsDialog.vue";
 import { useToastStore } from "../../../stores/toastStore.js";
 import { useInvoiceStore } from "../../../stores/invoiceStore.js";
+import { usePatientsStore } from "../../../stores/patientsStore.js";
 
 const props = defineProps({
 	pos_profile: {
@@ -75,23 +100,47 @@ defineEmits(["update:modelValue"]);
 const frappe = window.frappe;
 const toastStore = useToastStore();
 const invoiceStore = useInvoiceStore();
+const patientsStore = usePatientsStore();
+const { selectedPractitioner, isPractitionerLocked } = storeToRefs(patientsStore);
 
 const customerComponent = ref(null);
 const patientId = ref(null);
 const fetchingMedications = ref(false);
 const showMedicationsDialog = ref(false);
 const isHealthcareInstalled = ref(false);
+const practitioners = ref([]);
+const loadingPractitioners = ref(false);
+
+const fetchPractitioners = async () => {
+	loadingPractitioners.value = true;
+	try {
+		const response = await frappe.call({
+			method: "posawesome.posawesome.api.patient.get_practitioners",
+		});
+		practitioners.value = response.message || [];
+	} catch (e) {
+		console.error("Error fetching practitioners", e);
+	} finally {
+		loadingPractitioners.value = false;
+	}
+};
 
 const checkHealthcareInstalled = async () => {
 	try {
 		if (window.frappe?.boot?.installed_apps) {
 			isHealthcareInstalled.value = window.frappe.boot.installed_apps.includes("healthcare");
+			if (isHealthcareInstalled.value) {
+				fetchPractitioners();
+			}
 			return;
 		}
 		const response = await frappe.call({
 			method: "posawesome.posawesome.api.patient.is_healthcare_installed"
 		});
 		isHealthcareInstalled.value = !!response.message;
+		if (isHealthcareInstalled.value) {
+			fetchPractitioners();
+		}
 	} catch (e) {
 		console.error("Error checking healthcare installation", e);
 	}
@@ -116,7 +165,11 @@ const fetchMedicationRequests = () => {
     showMedicationsDialog.value = true;
 };
 
-const handleAddMedications = (selectedItems) => {
+const handleAddMedications = (selectedItems, practitioner = null) => {
+    if (practitioner) {
+        patientsStore.setSelectedPractitioner(practitioner);
+        patientsStore.setPractitionerLocked(true);
+    }
     let addedCount = 0;
     for (const item of selectedItems) {
         invoiceStore.addItem(item);
@@ -155,3 +208,12 @@ defineExpose({
 	openNewCustomer,
 });
 </script>
+
+<style scoped>
+.practitioner-input-wrapper {
+	width: 100%;
+	max-width: 100%;
+	padding-right: 1.5rem;
+	box-sizing: border-box;
+}
+</style>

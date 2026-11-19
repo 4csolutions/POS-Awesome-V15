@@ -241,6 +241,7 @@ export function get_invoice_doc(context: any) {
 		Boolean(previousCustomer && resolvedCustomer && previousCustomer !== resolvedCustomer);
 	doc.customer = resolvedCustomer;
 	doc.patient = context.patient || null;
+	doc.ref_practitioner = context.ref_practitioner || context.practitioner || null;
 	if (customerChanged) {
 		doc.customer_name = matchingCustomerDetails.customer_name || resolvedCustomer;
 	}
