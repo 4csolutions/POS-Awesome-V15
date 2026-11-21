@@ -146,6 +146,7 @@ export function isBenignGlobalError(
 
 	return (
 		normalizedMessage.includes("remove_last_divider") ||
+		normalizedMessage.includes("resizeobserver loop") ||
 		(normalizedMessage.includes("offsetwidth") &&
 			normalizedFilename.includes("shortcut.js"))
 	);
