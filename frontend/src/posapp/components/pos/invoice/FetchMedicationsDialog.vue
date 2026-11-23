@@ -1,5 +1,5 @@
 <template>
-	<v-dialog v-model="dialog" max-width="800">
+	<v-dialog v-model="dialog" max-width="1050">
 		<v-card class="pos-themed-card">
 			<v-card-title class="d-flex justify-space-between align-center">
 				<span>{{ frappe._('Select Medications') }}</span>
@@ -21,18 +21,88 @@
 					@update:modelValue="fetchMedications"
 				></v-select>
 
+				<v-autocomplete
+					v-if="selectedEncounter"
+					v-model="addItemSelection"
+					v-model:search="addItemSearch"
+					:items="searchItemResults"
+					:loading="searchingItems"
+					item-title="item_name"
+					item-value="item_code"
+					return-object
+					no-filter
+					clearable
+					density="compact"
+					hide-details
+					variant="outlined"
+					:label="frappe._('Add Item / Alternative to List')"
+					:placeholder="frappe._('Search by item name or code...')"
+					prepend-inner-icon="mdi-plus-circle-outline"
+					class="mb-3"
+					@update:search="onSearchItems"
+					@update:modelValue="onAddItemToList"
+				>
+					<template v-slot:item="{ props: itemProps, item: searchItem }">
+						<v-list-item v-bind="itemProps">
+							<v-list-item-subtitle>
+								{{ searchItem.raw.item_code }} | {{ frappe._('Qty') }}: {{ searchItem.raw.actual_qty ?? 0 }}
+							</v-list-item-subtitle>
+						</v-list-item>
+					</template>
+				</v-autocomplete>
+
 				<v-data-table
 					v-if="selectedEncounter"
-					v-model="selected"
 					:headers="headers"
 					:items="fetchedMedications"
 					:loading="fetchingMedications"
-					show-select
 					item-value="posa_row_id"
 					class="elevation-0"
 					:items-per-page="-1"
 					hide-default-footer
 				>
+					<template v-slot:item.item_name="{ item }">
+						<div v-if="editingRowId === item.posa_row_id" class="d-flex align-center gap-1">
+							<v-autocomplete
+								v-model:search="editItemSearch"
+								:items="editSearchResults"
+								:loading="searchingEditItems"
+								item-title="item_name"
+								item-value="item_code"
+								return-object
+								no-filter
+								autofocus
+								density="compact"
+								hide-details
+								variant="outlined"
+								:placeholder="frappe._('Search alternative...')"
+								class="edit-item-select"
+								@update:search="onSearchEditItems"
+								@update:modelValue="(val) => onReplaceItem(item, val)"
+							>
+								<template v-slot:item="{ props: itemProps, item: altItem }">
+									<v-list-item v-bind="itemProps">
+										<v-list-item-subtitle>
+											{{ altItem.raw.item_code }} | {{ frappe._('Qty') }}: {{ altItem.raw.actual_qty ?? 0 }}
+										</v-list-item-subtitle>
+									</v-list-item>
+								</template>
+							</v-autocomplete>
+							<v-btn icon="mdi-close" size="x-small" variant="text" @click="editingRowId = null"></v-btn>
+						</div>
+						<div v-else class="d-flex align-center justify-space-between">
+							<span>{{ item.item_name }}</span>
+							<v-btn
+								icon="mdi-swap-horizontal"
+								size="x-small"
+								variant="text"
+								color="primary"
+								:title="frappe._('Select Alternative')"
+								@click="startEditRow(item)"
+							></v-btn>
+						</div>
+					</template>
+
 					<template v-slot:item.batch_no="{ item }">
 						<v-select
 							v-if="item.has_batch_no"
@@ -72,9 +142,19 @@
 							hide-details
 							variant="outlined"
 							min="0"
-							:max="item.original_qty || item.qty"
 							class="qty-input"
 						></v-text-field>
+					</template>
+
+					<template v-slot:item.actions="{ item }">
+						<v-btn
+							icon="mdi-delete-outline"
+							size="x-small"
+							variant="text"
+							color="error"
+							:title="frappe._('Remove')"
+							@click="removeRow(item)"
+						></v-btn>
 					</template>
 				</v-data-table>
 			</v-card-text>
@@ -82,7 +162,7 @@
 			<v-card-actions>
 				<v-spacer></v-spacer>
 				<v-btn color="error" variant="text" @click="dialog = false">{{ frappe._('Cancel') }}</v-btn>
-				<v-btn color="primary" variant="elevated" :disabled="!selected.length" @click="submit">{{ frappe._('Add to Invoice') }}</v-btn>
+				<v-btn color="primary" variant="elevated" :disabled="!fetchedMedications.length" @click="submit">{{ frappe._('Add to Invoice') }}</v-btn>
 			</v-card-actions>
 		</v-card>
 	</v-dialog>
@@ -124,13 +204,137 @@ const fetchedMedications = ref([]);
 const fetchingEncounters = ref(false);
 const fetchingMedications = ref(false);
 
+const addItemSelection = ref(null);
+const addItemSearch = ref("");
+const searchItemResults = ref([]);
+const searchingItems = ref(false);
+
+const editingRowId = ref(null);
+const editItemSearch = ref("");
+const editSearchResults = ref([]);
+const searchingEditItems = ref(false);
+
+let searchTimer = null;
+let editSearchTimer = null;
+
+const searchPosItems = async (query) => {
+	if (!query || query.trim().length < 2) return [];
+	const response = await frappe.call({
+		method: "posawesome.posawesome.api.items.get_items",
+		args: {
+			pos_profile: JSON.stringify(props.posProfile || {}),
+			search_value: query.trim(),
+			limit: 20,
+		},
+	});
+	return response.message || [];
+};
+
+const onSearchItems = (val) => {
+	clearTimeout(searchTimer);
+	if (!val || val.trim().length < 2) {
+		searchItemResults.value = [];
+		return;
+	}
+	searchTimer = setTimeout(async () => {
+		searchingItems.value = true;
+		try {
+			searchItemResults.value = await searchPosItems(val);
+		} catch (e) {
+			console.error("Error searching items", e);
+		} finally {
+			searchingItems.value = false;
+		}
+	}, 250);
+};
+
+const onAddItemToList = (item) => {
+	if (!item || !item.item_code) return;
+	const newRow = {
+		...item,
+		posa_row_id: frappe.utils.get_random(12),
+		original_qty: 1,
+		qty: 1,
+	};
+	if (newRow.has_batch_no && newRow.batch_no_data?.length > 0) {
+		const sorted = getSortedBatches(newRow);
+		if (sorted.length > 0) {
+			newRow.batch_no = sorted[0].batch_no;
+		}
+	}
+	fetchedMedications.value.push(newRow);
+	selected.value.push(newRow.posa_row_id);
+	addItemSelection.value = null;
+	addItemSearch.value = "";
+	searchItemResults.value = [];
+};
+
+const startEditRow = (row) => {
+	editingRowId.value = row.posa_row_id;
+	editItemSearch.value = "";
+	editSearchResults.value = [];
+};
+
+const onSearchEditItems = (val) => {
+	clearTimeout(editSearchTimer);
+	if (!val || val.trim().length < 2) {
+		editSearchResults.value = [];
+		return;
+	}
+	editSearchTimer = setTimeout(async () => {
+		searchingEditItems.value = true;
+		try {
+			editSearchResults.value = await searchPosItems(val);
+		} catch (e) {
+			console.error("Error searching alternative items", e);
+		} finally {
+			searchingEditItems.value = false;
+		}
+	}, 250);
+};
+
+const onReplaceItem = (row, altItem) => {
+	if (!altItem || !altItem.item_code) return;
+	const preservedRowId = row.posa_row_id;
+	const preservedOrigQty = row.original_qty;
+	const preservedQty = row.qty > 0 ? row.qty : 1;
+
+	Object.assign(row, altItem, {
+		posa_row_id: preservedRowId,
+		original_qty: preservedOrigQty,
+		qty: preservedQty,
+		batch_no: null,
+	});
+
+	if (row.has_batch_no && row.batch_no_data?.length > 0) {
+		const sorted = getSortedBatches(row);
+		if (sorted.length > 0) {
+			row.batch_no = sorted[0].batch_no;
+		}
+	}
+	editingRowId.value = null;
+	editItemSearch.value = "";
+	editSearchResults.value = [];
+};
+
+const removeRow = (row) => {
+	fetchedMedications.value = fetchedMedications.value.filter(
+		(m) => m.posa_row_id !== row.posa_row_id
+	);
+	selected.value = selected.value.filter((id) => id !== row.posa_row_id);
+	if (editingRowId.value === row.posa_row_id) {
+		editingRowId.value = null;
+	}
+};
+
 const headers = computed(() => [
-	{ title: frappe._("Medication"), key: "item_name", sortable: false },
-	{ title: frappe._("Description"), key: "description", sortable: false },
-	{ title: frappe._("Requested Qty"), key: "original_qty", sortable: false },
-	{ title: frappe._("Available"), key: "actual_qty", sortable: false, width: "100px" },
-	{ title: frappe._("Batch"), key: "batch_no", sortable: false, width: "180px" },
-	{ title: frappe._("Add Qty"), key: "qty", sortable: false, width: "120px" },
+	{ title: frappe._("Medication"), key: "item_name", sortable: false, minWidth: "240px" },
+	{ title: frappe._("Description"), key: "description", sortable: false, minWidth: "160px" },
+	{ title: frappe._("Requested Qty"), key: "original_qty", sortable: false, width: "110px" },
+	{ title: frappe._("Available"), key: "actual_qty", sortable: false, width: "95px" },
+	{ title: frappe._("Batch"), key: "batch_no", sortable: false, width: "185px" },
+	{ title: frappe._("Add Qty"), key: "qty", sortable: false, width: "130px" },
+	{ title: "", key: "actions", sortable: false, width: "48px" },
 ]);
 
 const { getBatchAvailability } = useBatchSerial();
@@ -236,8 +440,8 @@ watch(
 );
 
 const submit = () => {
-    // Return selected items, updating their quantities from the table
-	const selectedRows = fetchedMedications.value.filter((m) => selected.value.includes(m.posa_row_id));
+    // Return all remaining items in the dialog, updating their quantities from the table
+	const selectedRows = fetchedMedications.value;
 	const finalItems = [];
 	let skippedCount = 0;
 
@@ -321,10 +525,14 @@ const submit = () => {
 
 <style scoped>
 .qty-input {
-	max-width: 80px;
+	min-width: 96px;
+	width: 105px;
+}
+.edit-item-select {
+	min-width: 230px;
 }
 .batch-select {
-	min-width: 150px;
+	min-width: 165px;
 }
 .text-error {
 	color: rgb(var(--v-theme-error)) !important;
