@@ -29,10 +29,22 @@ export async function show_payment(context: any) {
 			return;
 		}
 
-		if (
-			(window.frappe as any)?.boot?.installed_apps?.includes("healthcare") &&
-			!context.ref_practitioner
-		) {
+		let isHealthcare = (window.frappe as any)?.boot?.installed_apps?.includes("healthcare");
+		if (isHealthcare === undefined) {
+			if (context._isHealthcareInstalled === undefined) {
+				try {
+					const res = await (window as any).frappe?.call?.({
+						method: "posawesome.posawesome.api.patient.is_healthcare_installed",
+					});
+					context._isHealthcareInstalled = !!res?.message;
+				} catch {
+					context._isHealthcareInstalled = false;
+				}
+			}
+			isHealthcare = context._isHealthcareInstalled;
+		}
+
+		if (isHealthcare && !context.ref_practitioner) {
 			context.toastStore.show({
 				title: __(`Select a practitioner`),
 				color: "error",
