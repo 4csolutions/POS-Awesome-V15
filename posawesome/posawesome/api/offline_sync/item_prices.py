@@ -77,7 +77,7 @@ def sync_item_prices(
     pos_profile=None,
     watermark=None,
     offset=0,
-    limit=500,
+    limit=5000,
     schema_version=None,
 ):
     if schema_version and schema_version != SYNC_SCHEMA_VERSION:
@@ -94,7 +94,7 @@ def sync_item_prices(
         return response
 
     resolved_offset = _coerce_int(offset, 0)
-    resolved_limit = _coerce_int(limit, 500, minimum=1)
+    resolved_limit = _coerce_int(limit, 5000, minimum=1)
     filters = {"price_list": ("in", price_lists)}
     if watermark:
         filters["modified"] = [">", watermark]
