@@ -89,11 +89,14 @@ export async function syncItemPricesResource(
 		if (!response?.has_more) {
 			break;
 		}
-		const nextOffset = Number(response?.next_offset);
-		if (!Number.isFinite(nextOffset) || nextOffset <= offset) {
-			throw new Error("Item Price sync returned an invalid next_offset");
+		const rawNextOffset = Number(response?.next_offset);
+		if (Number.isFinite(rawNextOffset) && rawNextOffset > offset) {
+			offset = rawNextOffset;
+		} else if (rows.length > 0) {
+			offset += rows.length;
+		} else {
+			break;
 		}
-		offset = nextOffset;
 	}
 
 	await persistResourceSyncState({
