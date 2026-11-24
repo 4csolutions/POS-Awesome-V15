@@ -157,6 +157,14 @@ export function useNetworkLifecycle(options: UseNetworkLifecycleOptions) {
 			(window as any).serverOnline = true;
 			options.serverConnecting.value = false;
 		});
+		if (
+			(window as any).frappe?.realtime?.socket?.connected ||
+			(window as any).frappe?.realtime?.connected
+		) {
+			options.serverOnline.value = true;
+			(window as any).serverOnline = true;
+			options.serverConnecting.value = false;
+		}
 		registerRealtime("disconnect", () => {
 			options.serverOnline.value = false;
 			(window as any).serverOnline = false;
