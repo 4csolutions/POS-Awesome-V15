@@ -90,13 +90,10 @@ export async function syncItemPricesResource(
 			break;
 		}
 		const rawNextOffset = Number(response?.next_offset);
-		if (Number.isFinite(rawNextOffset) && rawNextOffset > offset) {
-			offset = rawNextOffset;
-		} else if (rows.length > 0) {
-			offset += rows.length;
-		} else {
+		if (!Number.isFinite(rawNextOffset) || rawNextOffset <= offset) {
 			break;
 		}
+		offset = rawNextOffset;
 	}
 
 	await persistResourceSyncState({
