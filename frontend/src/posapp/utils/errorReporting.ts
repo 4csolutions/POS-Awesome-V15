@@ -143,9 +143,11 @@ export function isBenignGlobalError(
 		500,
 	).toLowerCase();
 	const normalizedFilename = clip(filename || "", 500).toLowerCase();
+	const normalizedStack = clip(getErrorStack(error) || "", 1000).toLowerCase();
 
 	return (
 		normalizedMessage.includes("remove_last_divider") ||
+		normalizedStack.includes("remove_last_divider") ||
 		normalizedMessage.includes("resizeobserver loop") ||
 		(normalizedMessage.includes("offsetwidth") &&
 			normalizedFilename.includes("shortcut.js"))
