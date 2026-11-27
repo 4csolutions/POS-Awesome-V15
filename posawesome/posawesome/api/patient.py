@@ -372,3 +372,32 @@ def get_practitioners():
         order_by="practitioner_name asc",
         limit_page_length=0,
     )
+
+
+@frappe.whitelist()
+def get_patient_inpatient_flags(patient=None):
+    """Fetch inpatient record package and insured flags for a Patient."""
+    if not patient or not frappe.db.exists("DocType", "Inpatient Record"):
+        return {"inpatient_record": None, "is_patient_insured": 0, "custom_is_package": 0}
+
+    inpatient_record = frappe.db.get_value("Patient", patient, "inpatient_record")
+    if not inpatient_record:
+        return {"inpatient_record": None, "is_patient_insured": 0, "custom_is_package": 0}
+
+    fields = []
+    if frappe.db.has_column("Inpatient Record", "is_patient_insured"):
+        fields.append("is_patient_insured")
+    if frappe.db.has_column("Inpatient Record", "custom_is_package"):
+        fields.append("custom_is_package")
+
+    values = (
+        frappe.db.get_value("Inpatient Record", inpatient_record, fields, as_dict=True)
+        if fields
+        else {}
+    ) or {}
+
+    return {
+        "inpatient_record": inpatient_record,
+        "is_patient_insured": frappe.utils.cint(values.get("is_patient_insured")),
+        "custom_is_package": frappe.utils.cint(values.get("custom_is_package")),
+    }

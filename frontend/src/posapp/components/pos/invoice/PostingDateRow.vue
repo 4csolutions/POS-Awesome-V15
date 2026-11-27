@@ -102,11 +102,37 @@
 			</v-col>
 		</v-row>
 	</v-sheet>
+	<div
+		v-if="inpatientFlags?.custom_is_package || inpatientFlags?.is_patient_insured"
+		class="d-flex flex-wrap gap-2 mt-2"
+	>
+		<v-chip
+			v-if="inpatientFlags?.custom_is_package"
+			size="default"
+			color="primary"
+			variant="elevated"
+			class="font-weight-bold px-3"
+		>
+			<v-icon start icon="mdi-package-variant-closed" size="18" />
+			{{ __("Package") }}
+		</v-chip>
+		<v-chip
+			v-if="inpatientFlags?.is_patient_insured"
+			size="default"
+			color="info"
+			variant="elevated"
+			class="font-weight-bold px-3"
+		>
+			<v-icon start icon="mdi-shield-check" size="18" />
+			{{ __("Insured") }}
+		</v-chip>
+	</div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import type { POSProfile } from "../../../types/models";
+import { usePatientsStore } from "../../../stores/patientsStore";
 
 interface Props {
 	pos_profile: POSProfile | Record<string, any>;
@@ -131,6 +157,28 @@ const emit = defineEmits<{
 const internal_posting_date_display = ref(props.posting_date_display);
 const internal_price_list = ref(props.priceList);
 const postingDatePicker = ref<any>(null);
+const patientsStore = usePatientsStore();
+const inpatientFlags = ref<{ is_patient_insured: number; custom_is_package: number } | null>(null);
+
+watch(
+	() => patientsStore.selectedPatient,
+	async (patient) => {
+		if (!patient) {
+			inpatientFlags.value = null;
+			return;
+		}
+		try {
+			const res = await (window as any).frappe?.call?.({
+				method: "posawesome.posawesome.api.patient.get_patient_inpatient_flags",
+				args: { patient },
+			});
+			inpatientFlags.value = res?.message || null;
+		} catch {
+			inpatientFlags.value = null;
+		}
+	},
+	{ immediate: true },
+);
 
 const showPriceList = computed(() => !!props.pos_profile?.posa_enable_price_list_dropdown);
 const showBalance = computed(() => !!props.pos_profile?.posa_show_customer_balance);
