@@ -1235,7 +1235,16 @@ def submit_invoice(invoice, data, submit_in_background=False):
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
         if client_request_id:
             invoice["posa_client_request_id"] = client_request_id
-        created = update_invoice(json.dumps(invoice))
+        for _attempt in range(3):
+            try:
+                created = update_invoice(json.dumps(invoice))
+                break
+            except frappe.QueryDeadlockError:
+                if _attempt == 2:
+                    raise
+                import random
+                import time
+                time.sleep(random.uniform(0.05, 0.2))
         invoice_name = created.get("name")
         invoice_doc = frappe.get_doc(doctype, invoice_name)
     else:
